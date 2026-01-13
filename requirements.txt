@@ -1,6 +1,6 @@
 fastapi
 uvicorn
 jinja2
-pathon-multipart
+python-multipart
 itsdangerous
 psycopg[binary]
