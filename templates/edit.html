@@ -3,43 +3,43 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>編輯</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <title>編輯資料</title>
+  <link rel="stylesheet" href="/static/style.css?v=999">
 </head>
 <body>
   <div class="container">
-    <h1>編輯資料</h1>
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <b>編輯：{{ r.name }}</b>
+      <a class="btn" href="/">返回</a>
+    </div>
 
     <div class="card">
-      <form method="post" action="/edit/{{ row.id }}" class="form">
+      <form method="post" action="/edit/{{ r.id }}" class="form-grid">
         <label>建立日
-          <input type="date" name="created_date" value="{{ row.created_date }}" required>
+          <input type="date" name="created_date" value="{{ r.created_date }}" required>
         </label>
 
         <label>名稱
-          <input type="text" name="name" value="{{ row.name }}" required>
+          <input type="text" name="name" value="{{ r.name }}" required>
         </label>
 
         <label>總金額
-          <input type="number" name="total_amount" min="0" value="{{ row.total_amount }}" required>
+          <input type="number" name="total_amount" min="0" value="{{ r.total_amount }}" required>
         </label>
 
         <label>期數
-          <input type="number" name="periods" min="1" value="{{ row.periods }}" required>
+          <input type="number" name="periods" min="1" value="{{ r.periods }}" required>
         </label>
 
         <label>每期金額
-          <input type="number" name="amount" min="0" value="{{ row.amount }}" required>
+          <input type="number" name="amount" min="0" value="{{ r.amount }}" required>
         </label>
 
-        <label>繳款週期（每 N 天一次）
-          <input type="number" name="interval_days" min="1" value="{{ row.interval_days }}" required>
+        <label>繳款週期（每 N 天）
+          <input type="number" name="interval_days" min="1" value="{{ r.interval_days }}" required>
         </label>
 
-        <div class="actions">
-          <button type="submit" class="btn primary">儲存</button>
-          <a class="btn" href="/">取消</a>
-        </div>
+        <button class="btn primary" type="submit">儲存</button>
       </form>
     </div>
   </div>

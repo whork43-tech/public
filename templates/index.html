@@ -52,13 +52,6 @@
         </form>
       </div>
 
-      <div class="card">
-  <form method="get" action="/change-password" style="margin:0;">
-    <button class="btn primary" type="submit">更改密碼</button>
-  </form>
-</div>
-
-  
       <div class="layout">
 
         <!-- 左邊：新增 + 目前資料 -->
@@ -146,6 +139,10 @@
                         <p style="color: gray;">尚未到繳款日</p>
                       {% endif %}
 
+                      <!-- ✅編輯 -->
+                      <a class="btn" href="/edit/{{ r.id }}">編輯</a>
+
+                      <!-- 刪除 -->
                       <form method="post" action="/delete/{{ r.id }}" onsubmit="return confirm('確定要刪除嗎？');">
                         <button class="btn danger" type="submit">刪除</button>
                       </form>
@@ -160,6 +157,16 @@
 
         <!-- 右邊：通知 -->
         <div class="side">
+
+          <!-- ✅今日總收金額 + 歷史按鈕 -->
+          <div class="card">
+            <h2>今日總收金額</h2>
+            <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
+            <div style="margin-top: 10px;">
+              <a class="btn primary" href="/history">📊 歷史繳款頁</a>
+            </div>
+          </div>
+
           <div class="card">
             <h2>通知</h2>
 
