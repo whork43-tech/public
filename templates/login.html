@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登入 - 分期記帳</title>
+  <link rel="stylesheet" href="/static/style.css?v=999">
+</head>
+<body>
+  <div class="container">
+    <h1>分期記帳</h1>
+
+    <div class="card">
+      <h2>登入</h2>
+
+      {% if err %}
+        <p style="color:#c53030;"><b>{{ err }}</b></p>
+      {% endif %}
+
+      <form method="post" action="/login" class="form-grid">
+        <label>帳號
+          <input type="text" name="username" required>
+        </label>
+
+        <label>密碼
+          <input type="password" name="password" required>
+        </label>
+
+        <button type="submit" class="btn primary">登入</button>
+      </form>
+
+      <p class="muted" style="margin-top:12px;">
+        還沒有帳號？<a href="/register">去註冊</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
