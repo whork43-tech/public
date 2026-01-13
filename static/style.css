@@ -169,3 +169,15 @@ h3{ margin: 12px 0 8px; font-size: 15px; color: #222; }
   gap: 12px;
 }
 .main{ min-width: 0; }
+.bg-soft {
+  background: #f6f8fb;
+}
+
+.card {
+  border: 0;
+  border-radius: 14px;
+}
+
+.shadow-soft {
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+}
