@@ -450,7 +450,6 @@ def add_record(
     request: Request,
     created_date: str = Form(...),
     name: str = Form(...),
-    face_value: int = Form(...),
     total_amount: int = Form(...),
     amount: int = Form(...),
     periods: int = Form(...),
@@ -464,14 +463,15 @@ def add_record(
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(f"""
-                INSERT INTO records
-                (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, 0, {PH})
-            """, (created_date, name, face_value, total_amount, periods, amount, interval_days, user["user_id"]))
+            INSERT INTO records
+            (created_date, name, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
+            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, 0, {PH})
+            """, (
+                created_date, name, total_amount, periods, amount, interval_days, user["user_id"]
+            ))
         conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
-
 
 @app.get("/history")
 def history(request: Request):
