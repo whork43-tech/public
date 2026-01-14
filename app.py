@@ -363,6 +363,8 @@ def home(request: Request):
     init_db()
     user = get_current_user(request)
     paid_msg = request.query_params.get("paid_msg", "")
+    paid_id = request.query_params.get("paid_id")
+    paid_id = int(paid_id) if paid_id and paid_id.isdigit() else None
 
     if not user:
         return templates.TemplateResponse(
@@ -370,10 +372,32 @@ def home(request: Request):
             {"request": request, "user": None, "paid_msg": paid_msg}
         )
 
+    # ✅ 取出該使用者所有分期資料
+    rows = get_all_records_for_user(user["user_id"])
+
+    # ✅ 通知區：今日到期 / 逾期
+    today_due_records = [r for r in rows if r["is_due_today"]]
+    overdue_records = [r for r in rows if r["is_overdue"]]
+    due_today_count = len(today_due_records)
+
+    # ✅ 今日總收
+    today_total = get_today_total_for_user(user["user_id"])
+
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "user": user, "paid_msg": paid_msg}
+        {
+            "request": request,
+            "user": user,
+            "paid_msg": paid_msg,
+            "paid_id": paid_id,
+            "rows": rows,
+            "today_due_records": today_due_records,
+            "overdue_records": overdue_records,
+            "due_today_count": due_today_count,
+            "today_total": today_total,
+        }
     )
+
 
 
 @app.get("/add")
