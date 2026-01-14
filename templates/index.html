@@ -105,12 +105,13 @@
                         <p style="color: #0a7; font-weight: bold;">✅ 繳款完成</p>
 
                       {% elif r.is_due_today %}
+                        <!-- 左側卡片不顯示繳款按鈕（只顯示提醒） -->
                         <p style="color: #f59e0b; font-weight: bold;">🔔 今天要繳款</p>
 
                       {% elif r.is_overdue %}
+                        <!-- 左側卡片不顯示補繳按鈕（只顯示提醒） -->
                         <p style="color: red; font-weight: bold;">❗ 未完成繳款</p>
-                        <p style="color: gray;">請到右側通知區補繳</p>
-
+                        <p style="color: gray; margin: 6px 0 0;">請到右側通知區補繳</p>
 
                       {% else %}
                         <p style="color: gray;">尚未到繳款日</p>
@@ -181,6 +182,7 @@
         </div>
       </div>
 
+      <!-- 取消彈跳通知視窗（不再 alert） -->
 
     {% endif %}
   </div>
