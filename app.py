@@ -515,9 +515,9 @@ def history(request: Request):
         "history.html",
         {"request": request, "user": user, "groups": groups}
     )
-    
 
-    @app.post("/history/delete")
+
+@app.post("/history/delete")
 def delete_payment(request: Request, payment_id: int = Form(...)):
     init_db()
     user = get_current_user(request)
