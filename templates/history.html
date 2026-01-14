@@ -25,7 +25,16 @@
           <h2 style="margin:0 0 8px 0;">{{ g.date }}（總收：{{ g.total }}）</h2>
           <ul style="margin:0; padding-left:18px;">
             {% for it in g.payments %}
-              <li>✅ {{ it.name }}：{{ it.amount }}</li>
+              <li style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                <span>✅ {{ it.name }}：{{ it.amount }}</span>
+
+                <form method="post" action="/history/delete"
+                      onsubmit="return confirm('確定要刪除這筆繳款紀錄嗎？');"
+                      style="margin:0;">
+                <input type="hidden" name="payment_id" value="{{ it.id }}">
+                <button class="btn" type="submit">刪除</button>
+              </form>
+            </li>
             {% endfor %}
           </ul>
         </div>
