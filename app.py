@@ -585,9 +585,9 @@ def pay_record(request: Request, record_id: int):
 
             # ✅ 新增一筆繳款紀錄到 payments
             cur.execute(f"""
-                INSERT INTO payments (paid_at, amount, record_id, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH})
-            """, (date.today().isoformat(), r["amount"], r["id"], user["user_id"]))
+                INSERT INTO payments (paid_at, amount, record_id, user_id, record_name)
+                VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
+            """, (date.today().isoformat(), int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
 
             # ✅ 更新 records：paid_count +1、last_paid_day 更新成今天是第幾天
             cur.execute(f"""
@@ -668,52 +668,6 @@ def edit_save(
                     interval_days = {PH}
                 WHERE id = {PH} AND user_id = {PH}
             """, (created_date, name, total_amount, periods, amount, interval_days, record_id, user["user_id"]))
-        conn.commit()
-
-    return RedirectResponse("/", status_code=303)
-
-
-@app.post("/pay/{record_id}")
-def pay_record(request: Request, record_id: int):
-    init_db()
-    user = require_login(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            # 取該筆資料（只能操作自己的）
-            cur.execute(f"""
-                SELECT id, created_date, name, face_value, total_amount, periods, amount,
-                       interval_days, paid_count, last_paid_day, user_id
-                FROM records
-                WHERE id = {PH} AND user_id = {PH}
-            """, (record_id, user["user_id"]))
-            row = cur.fetchone()
-
-            if not row:
-                return RedirectResponse("/", status_code=303)
-
-            r = row_to_view(row)
-
-            # 已繳清就不再新增繳款
-            if r["paid_count"] >= r["periods"]:
-                return RedirectResponse("/", status_code=303)
-
-            # 新增繳款紀錄（payments）
-            cur.execute(f"""
-                INSERT INTO payments (paid_at, amount, record_id, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH})
-            """, (date.today().isoformat(), int(r["amount"]), int(r["id"]), int(user["user_id"])))
-
-            # 更新 records：期數 +1，last_paid_day = 今天是第幾天（用你原本的計算）
-            cur.execute(f"""
-                UPDATE records
-                SET paid_count = paid_count + 1,
-                    last_paid_day = {PH}
-                WHERE id = {PH} AND user_id = {PH}
-            """, (int(r["current_day"]), int(r["id"]), int(user["user_id"])))
-
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
