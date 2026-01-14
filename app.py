@@ -323,7 +323,7 @@ def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(f"""
-                SELECT paid_at, record_name, amount
+                SELECT id, paid_at, record_name, amount
                 FROM payments
                 WHERE user_id = {PH}
                 ORDER BY paid_at DESC, id DESC
@@ -332,15 +332,20 @@ def get_history_grouped(user_id: int):
 
     by_date = {}
     for r in rows:
-        paid_at = r["paid_at"] if isinstance(r, sqlite3.Row) else r[0]
-        record_name = r["record_name"] if isinstance(r, sqlite3.Row) else r[1]
-        amount = r["amount"] if isinstance(r, sqlite3.Row) else r[2]
+        pid = r["id"] if isinstance(r, sqlite3.Row) else r[0]
+        paid_at = r["paid_at"] if isinstance(r, sqlite3.Row) else r[1]
+        record_name = r["record_name"] if isinstance(r, sqlite3.Row) else r[2]
+        amount = r["amount"] if isinstance(r, sqlite3.Row) else r[3]
 
         paid_at_str = paid_at if isinstance(paid_at, str) else paid_at.isoformat()
 
         by_date.setdefault(paid_at_str, {"date": paid_at_str, "total": 0, "payments": []})
         by_date[paid_at_str]["total"] += int(amount)
-        by_date[paid_at_str]["payments"].append({"name": record_name, "amount": int(amount)})
+        by_date[paid_at_str]["payments"].append({
+            "id": int(pid),
+            "name": record_name,
+            "amount": int(amount),
+        })
 
     return sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
 
@@ -510,6 +515,24 @@ def history(request: Request):
         "history.html",
         {"request": request, "user": user, "groups": groups}
     )
+    
+
+    @app.post("/history/delete")
+def delete_payment(request: Request, payment_id: int = Form(...)):
+    init_db()
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"""
+                DELETE FROM payments
+                WHERE id = {PH} AND user_id = {PH}
+            """, (payment_id, user["user_id"]))
+        conn.commit()
+
+    return RedirectResponse("/history", status_code=303)
 
 
 @app.get("/add-page")
