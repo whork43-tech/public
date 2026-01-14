@@ -105,15 +105,12 @@
                         <p style="color: #0a7; font-weight: bold;">✅ 繳款完成</p>
 
                       {% elif r.is_due_today %}
-                        <form action="/pay/{{ r.id }}" method="post">
-                          <button class="btn">今日已繳款</button>
-                        </form>
+                        <p style="color: #f59e0b; font-weight: bold;">🔔 今天要繳款</p>
 
                       {% elif r.is_overdue %}
                         <p style="color: red; font-weight: bold;">❗ 未完成繳款</p>
-                        <form action="/pay/{{ r.id }}" method="post">
-                          <button class="btn">補繳</button>
-                        </form>
+                        <p style="color: gray;">請到右側通知區補繳</p>
+
 
                       {% else %}
                         <p style="color: gray;">尚未到繳款日</p>
@@ -157,7 +154,7 @@
                 <li>
                   🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
                   <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-                    <button class="btn" type="submit">新增繳款</button>
+                    <button class="btn" type="submit">已繳款</button>
                   </form>
                 </li>
               {% endfor %}
