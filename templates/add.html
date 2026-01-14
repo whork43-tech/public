@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>新增 - 分期記帳</title>
+  <link rel="stylesheet" href="/static/style.css?v=999">
+</head>
+<body>
+  <div class="container">
+    <h1>新增</h1>
+
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>目前登入：<b>{{ user.username }}</b></div>
+      <a class="btn" href="/">回首頁</a>
+    </div>
+
+    <div class="card">
+      <form method="post" action="/add" class="form-grid">
+
+        <label>建立日
+          <input type="date" name="created_date" required>
+        </label>
+
+        <label>名稱
+          <input type="text" name="name" required>
+        </label>
+
+        <label>票面（金額）
+          <input type="number" name="face_value" min="0" placeholder="例如：1000" required>
+        </label>
+
+        <label>總金額
+          <input type="number" name="total_amount" min="0" placeholder="例如：24000" required>
+        </label>
+
+        <label>每期金額
+          <input type="number" name="amount" min="0" placeholder="例如：3500" required>
+        </label>
+
+        <label>期數
+          <input type="number" name="periods" min="1" placeholder="例如：8" required>
+        </label>
+
+        <label>繳款週期（每 N 天繳一次）
+          <input type="number" name="interval_days" min="1" placeholder="例如：3" required>
+        </label>
+
+        <button type="submit" class="btn primary">儲存</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
