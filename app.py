@@ -555,6 +555,124 @@ def ping():
     return {"status": "ok"}
 
 
+from datetime import date
+
+@app.post("/pay/{record_id}")
+def pay_record(request: Request, record_id: int):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 先拿資料（確認是自己的）
+            cur.execute(f"""
+                SELECT id, created_date, name, face_value, total_amount, periods, amount,
+                       interval_days, paid_count, last_paid_day, user_id
+                FROM records
+                WHERE id = {PH} AND user_id = {PH}
+            """, (record_id, user["user_id"]))
+            row = cur.fetchone()
+            if not row:
+                return RedirectResponse("/", status_code=303)
+
+            r = row_to_view(row)
+
+            # 已繳清就不再新增
+            if r["paid_count"] >= r["periods"]:
+                return RedirectResponse("/", status_code=303)
+
+            # ✅ 新增一筆繳款紀錄到 payments
+            cur.execute(f"""
+                INSERT INTO payments (paid_at, amount, record_id, user_id)
+                VALUES ({PH}, {PH}, {PH}, {PH})
+            """, (date.today().isoformat(), r["amount"], r["id"], user["user_id"]))
+
+            # ✅ 更新 records：paid_count +1、last_paid_day 更新成今天是第幾天
+            cur.execute(f"""
+                UPDATE records
+                SET paid_count = paid_count + 1,
+                    last_paid_day = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+            """, (r["current_day"], r["id"], user["user_id"]))
+
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/delete/{record_id}")
+def delete_record(request: Request, record_id: int):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"DELETE FROM records WHERE id = {PH} AND user_id = {PH}", (record_id, user["user_id"]))
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/edit/{record_id}")
+def edit_page(request: Request, record_id: int):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"""
+                SELECT id, created_date, name, face_value, total_amount, periods, amount,
+                       interval_days, paid_count, last_paid_day, user_id
+                FROM records
+                WHERE id = {PH} AND user_id = {PH}
+            """, (record_id, user["user_id"]))
+            row = cur.fetchone()
+            if not row:
+                return RedirectResponse("/", status_code=303)
+
+    r = row_to_view(row)
+    return templates.TemplateResponse("edit.html", {"request": request, "user": user, "r": r})
+
+
+@app.post("/edit/{record_id}")
+def edit_save(
+    request: Request,
+    record_id: int,
+    created_date: str = Form(...),
+    name: str = Form(...),
+    total_amount: int = Form(...),
+    periods: int = Form(...),
+    amount: int = Form(...),
+    interval_days: int = Form(...),
+):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"""
+                UPDATE records
+                SET created_date = {PH},
+                    name = {PH},
+                    total_amount = {PH},
+                    periods = {PH},
+                    amount = {PH},
+                    interval_days = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+            """, (created_date, name, total_amount, periods, amount, interval_days, record_id, user["user_id"]))
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
