@@ -74,8 +74,9 @@ def _sqlite_has_column(cur, table: str, col: str) -> bool:
 def init_db():
     with get_conn() as conn:
         with get_cursor(conn) as cur:
+
             if IS_SQLITE:
-                # 1) users
+                # 1 users
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,11 +85,11 @@ def init_db():
                 );
                 """)
 
-                # 2) records（加 face_value）
+                # 2 records（✅加 face_value）
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS records (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    created_date TEXT NOT NULL,
+                    created_date DATE NOT NULL,
                     name TEXT NOT NULL,
                     face_value INTEGER NOT NULL DEFAULT 0,
                     total_amount INTEGER NOT NULL,
@@ -102,25 +103,27 @@ def init_db():
                 );
                 """)
 
-                # ✅如果你舊資料庫 records 沒有 face_value，就補上（不會刪資料）
-                if not _sqlite_has_column(cur, "records", "face_value"):
-                    cur.execute("ALTER TABLE records ADD COLUMN face_value INTEGER NOT NULL DEFAULT 0;")
-
-                # 3) payments（保留歷史：record_id 可為 NULL；刪除 records 時不要連動刪 payments）
+                # 3 payments（一定最後）
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS payments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    paid_at TEXT NOT NULL,
+                    paid_at DATE NOT NULL,
                     amount INTEGER NOT NULL,
-                    record_id INTEGER,
-                    record_name TEXT NOT NULL,
+                    record_id INTEGER NOT NULL,
                     user_id INTEGER NOT NULL,
-                    FOREIGN KEY(record_id) REFERENCES records(id) ON DELETE SET NULL,
+                    FOREIGN KEY(record_id) REFERENCES records(id) ON DELETE CASCADE,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
                 """)
+
+                # ✅ 自動補 records.face_value（舊資料庫才需要）
+                cur.execute("PRAGMA table_info(records);")
+                cols = [row[1] for row in cur.fetchall()]  # row[1] = 欄位名
+                if "face_value" not in cols:
+                    cur.execute("ALTER TABLE records ADD COLUMN face_value INTEGER NOT NULL DEFAULT 0;")
+
             else:
-                # Postgres
+                # users
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
@@ -129,6 +132,7 @@ def init_db():
                 );
                 """)
 
+                # records（✅加 face_value）
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS records (
                     id SERIAL PRIMARY KEY,
@@ -147,26 +151,21 @@ def init_db():
                 );
                 """)
 
-                # ✅舊 PG 沒 face_value 也補（安全）
-                try:
-                    cur.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS face_value INTEGER NOT NULL DEFAULT 0;")
-                except Exception:
-                    pass
-
+                # payments
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS payments (
                     id SERIAL PRIMARY KEY,
                     paid_at DATE NOT NULL,
                     amount INTEGER NOT NULL,
-                    record_id INTEGER
+                    record_id INTEGER NOT NULL
                         REFERENCES records(id)
-                        ON DELETE SET NULL,
-                    record_name TEXT NOT NULL,
+                        ON DELETE CASCADE,
                     user_id INTEGER NOT NULL
                         REFERENCES users(id)
                         ON DELETE CASCADE
                 );
                 """)
+
         conn.commit()
 
 
@@ -450,6 +449,7 @@ def add_record(
     request: Request,
     created_date: str = Form(...),
     name: str = Form(...),
+    face_value: int = Form(0),
     total_amount: int = Form(...),
     amount: int = Form(...),
     periods: int = Form(...),
@@ -464,10 +464,10 @@ def add_record(
         with get_cursor(conn) as cur:
             cur.execute(f"""
             INSERT INTO records
-            (created_date, name, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
-            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, 0, {PH})
+            (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
+            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, 0, {PH})
             """, (
-                created_date, name, total_amount, periods, amount, interval_days, user["user_id"]
+                created_date, name, face_value, total_amount, periods, amount, interval_days, user["user_id"]
             ))
         conn.commit()
 
