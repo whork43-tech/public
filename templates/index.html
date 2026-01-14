@@ -76,7 +76,11 @@
                     <div class="row-main">
                       <div class="title">{{ r.name }}</div>
                       <div class="meta">
-                        建立日：{{ r.created_date }} ｜ 總{{ r.total_amount }} ｜ {{ r.periods }}期 ｜ 每期{{ r.amount }}
+                        建立日：{{ r.created_date }}
+                        ｜ 票面 {{ r.face_value }}
+                        ｜ 總 {{ r.total_amount }}
+                        ｜ {{ r.periods }} 期
+                        ｜ 每期 {{ r.amount }}
                       </div>
 
                       <div class="notice">
