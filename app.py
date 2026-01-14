@@ -488,6 +488,21 @@ def history(request: Request):
     )
 
 
+@app.get("/add-page")
+def add_page(request: Request):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    return templates.TemplateResponse(
+        "add.html",
+        {
+            "request": request,
+            "user": user
+        }
+    )
+
+
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
@@ -496,3 +511,4 @@ def ping():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+return RedirectResponse("/", status_code=303)
