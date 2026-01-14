@@ -146,7 +146,7 @@
           <div class="card">
             <h2>通知</h2>
 
-            <h3>今日繳款</h3>
+            <h3>今日收款</h3>
             {% if today_due_records|length == 0 %}
               <p>今天沒有到期的繳款</p>
             {% else %}
@@ -160,6 +160,20 @@
                 </li>
               {% endfor %}
               </ul>
+            {% endif %}
+
+            <h3>明日收款</h3>
+            {% set ns = namespace(has_tomorrow=false) %}
+            <ul>
+            {% for r in rows %}
+              {% if r.days_left == 1 and (r.paid_count < r.periods) %}
+                {% set ns.has_tomorrow = true %}
+                <li>⏳ {{ r.name }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
+              {% endif %}
+            {% endfor %}
+            </ul>
+            {% if not ns.has_tomorrow %}
+              <p>明天沒有到期的收款</p>
             {% endif %}
 
             <h3>未完成繳款（逾期）</h3>
