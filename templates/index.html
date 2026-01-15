@@ -57,15 +57,11 @@
         <!-- 左邊：功能 + 目前資料 -->
         <div class="main">
 
-        <!-- ✅ 功能 -->
-        <div class="card" style="text-align:center;">
-          <h2>功能</h2>
-
-        <div style="display:flex; justify-content:center; gap:12px;">
-          <a class="btn primary" href="/add-page">＋ 新增資料</a>
-          <a class="btn" href="/history">📄 歷史繳款</a>
-        </div>
-      </div>
+          <!-- ✅ 功能：新增（跳頁） -->
+          <div class="card" style="text-align:center;">
+            <h2>功能</h2>
+            <a class="btn primary" href="/add-page">＋ 新增</a>
+          </div>
 
           <!-- ✅ 目前資料 -->
           <div class="card">
@@ -83,7 +79,7 @@
                         建立日：{{ r.created_date }}
                         ｜ 票面 {{ r.face_value }}
                         ｜ 支出 {{ r.total_amount }}/餘 {{ (r.total_amount - (r.paid_count * r.amount)) if (r.total_amount - (r.paid_count * r.amount)) > 0 else 0 }}
-                        ｜ {{ r.periods }} 期/餘 {{ (r.periods - r.paid_count) if (r.periods - r.paid_count) > 0 else 0 }} 期
+                        ｜ {{ r.periods }} 期｜餘 {{ (r.periods - r.paid_count) if (r.periods - r.paid_count) > 0 else 0 }} 期
                         ｜ 每期 {{ r.amount }}
                       </div>
 
@@ -140,10 +136,13 @@
         <!-- 右邊：通知 -->
         <div class="side">
 
-          <!-- ✅ 今日淨收 -->
+          <!-- ✅ 今日總收金額 + 歷史按鈕 -->
           <div class="card">
-             <h2>今日淨收</h2>
-             <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
+            <h2>今日總收金額</h2>
+            <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
+            <div style="margin-top: 10px;">
+              <a class="btn primary" href="/history">📊 歷史繳款頁</a>
+            </div>
           </div>
 
           <div class="card">
