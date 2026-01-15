@@ -216,9 +216,19 @@
                   {% set overdue_periods = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
 
                   ❗ {{ r.name }}（逾期 {{ overdue_periods }} 期）
-                  <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-                    <button class="btn" type="submit">補繳</button>
+                  <form action="/pay/{{ r.id }}" method="post"
+                        style="display:inline-flex; align-items:center; gap:6px;">
+                    (
+                    <input type="number"
+                           name="periods"
+                           min="1"
+                           style="width:60px; padding:4px;"
+                           placeholder="期數"
+                           required>
+                    )
+                    <button class="btn" type="submit">期補繳</button>
                   </form>
+
                 </li>
 
               {% endfor %}
