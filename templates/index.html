@@ -94,11 +94,25 @@
                         {% set periods_left = (r.periods - r.paid_count) %}
 
                         建立日：{{ r.created_date }}
-                        ｜ 票面 {{ r.face_value }}/餘 {{ face_left if face_left > 0 else 0 }}
-                        ｜ 支出 {{ r.total_amount }}/餘 {{ spend_left if spend_left > 0 else 0 }}
+
+                        ｜ 票面 {{ r.face_value }}/餘
+                        {% if face_left < 0 %}
+                          <span style="color:#dc2626; font-weight:700;">{{ face_left }}</span>
+                        {% else %}
+                          {{ face_left }}
+                        {% endif %}
+
+                        ｜ 支出 {{ r.total_amount }}/餘
+                        {% if spend_left < 0 %}
+                          <span style="color:#dc2626; font-weight:700;">{{ spend_left }}</span>
+                        {% else %}
+                        {{ spend_left }}
+                        {% endif %}
+
                         ｜ {{ r.periods }} 期/餘 {{ periods_left if periods_left > 0 else 0 }} 期
                         ｜ 每期 {{ r.amount }}
                       </div>
+
 
                       <div class="notice">
                         週期：每 {{ r.interval_days }} 天一次
