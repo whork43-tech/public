@@ -5,6 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>分期記帳</title>
   <link rel="stylesheet" href="/static/style.css?v=999">
+
+  <style>
+    /* 通知區：每區最多顯示約 5 筆，超過就捲動 */
+    .notice-list {
+      max-height: 210px; /* 約 5 筆 */
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .notice-list li { margin-bottom: 8px; }
+  </style>
+
 </head>
 <body>
   <div class="container">
@@ -60,7 +71,8 @@
           <!-- ✅ 功能：新增（跳頁） -->
           <div class="card" style="text-align:center;">
             <h2>功能</h2>
-            <a class="btn primary" href="/add-page">＋ 新增</a>
+            <a class="btn primary" href="/add-page">＋ 新增資料</a>
+            <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
           </div>
 
           <!-- ✅ 目前資料 -->
@@ -105,15 +117,13 @@
                         <p style="color: #0a7; font-weight: bold;">✅ 繳款完成</p>
 
                       {% elif r.is_due_today %}
-                        <form action="/pay/{{ r.id }}" method="post">
-                          <button class="btn">今日已繳款</button>
-                        </form>
+                        <!-- 左側卡片不顯示繳款按鈕（只顯示提醒） -->
+                        <p style="color: #f59e0b; font-weight: bold;">🔔 今天要繳款</p>
 
                       {% elif r.is_overdue %}
+                        <!-- 左側卡片不顯示補繳按鈕（只顯示提醒） -->
                         <p style="color: red; font-weight: bold;">❗ 未完成繳款</p>
-                        <form action="/pay/{{ r.id }}" method="post">
-                          <button class="btn">補繳</button>
-                        </form>
+                        <p style="color: gray; margin: 6px 0 0;">請到右側通知區補繳</p>
 
                       {% else %}
                         <p style="color: gray;">尚未到繳款日</p>
@@ -138,37 +148,48 @@
 
           <!-- ✅ 今日總收金額 + 歷史按鈕 -->
           <div class="card">
-            <h2>今日總收金額</h2>
+            <h2>今日淨收</h2>
             <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
-            <div style="margin-top: 10px;">
-              <a class="btn primary" href="/history">📊 歷史繳款頁</a>
-            </div>
-          </div>
+</div>
 
           <div class="card">
             <h2>通知</h2>
 
-            <h3>今日繳款</h3>
+            <h3>今日收款</h3>
             {% if today_due_records|length == 0 %}
               <p>今天沒有到期的繳款</p>
             {% else %}
-              <ul>
+              <ul class="notice-list">
               {% for r in today_due_records %}
                 <li>
                   🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
                   <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-                    <button class="btn" type="submit">新增繳款</button>
+                    <button class="btn" type="submit">已繳款</button>
                   </form>
                 </li>
               {% endfor %}
               </ul>
             {% endif %}
 
-            <h3>未完成繳款（逾期）</h3>
+            <h3>明日收款</h3>
+            {% set ns = namespace(has_tomorrow=false) %}
+            <ul class="notice-list">
+            {% for r in rows %}
+              {% if r.days_left == 1 and (r.paid_count < r.periods) %}
+                {% set ns.has_tomorrow = true %}
+                <li>⏳ {{ r.name }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
+              {% endif %}
+            {% endfor %}
+            </ul>
+            {% if not ns.has_tomorrow %}
+              <p>明天沒有到期的收款</p>
+            {% endif %}
+
+            <h3>逾期</h3>
             {% if overdue_records|length == 0 %}
               <p>目前沒有逾期</p>
             {% else %}
-              <ul>
+              <ul class="notice-list">
               {% for r in overdue_records %}
                 <li>
                   ❗ {{ r.name }}（已逾期 {{ -r.days_left }} 天）
@@ -184,12 +205,7 @@
         </div>
       </div>
 
-      <script>
-        const due = {{ due_today_count }};
-        if (due > 0) {
-          alert("🔔 今天有 " + due + " 筆要繳款");
-        }
-      </script>
+      <!-- 取消彈跳通知視窗（不再 alert） -->
 
     {% endif %}
   </div>
