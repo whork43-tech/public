@@ -83,7 +83,7 @@
                         建立日：{{ r.created_date }}
                         ｜ 票面 {{ r.face_value }}
                         ｜ 支出 {{ r.total_amount }}/餘 {{ (r.total_amount - (r.paid_count * r.amount)) if (r.total_amount - (r.paid_count * r.amount)) > 0 else 0 }}
-                        ｜ {{ r.periods }} 期｜餘 {{ (r.periods - r.paid_count) if (r.periods - r.paid_count) > 0 else 0 }} 期
+                        ｜ {{ r.periods }} 期/餘 {{ (r.periods - r.paid_count) if (r.periods - r.paid_count) > 0 else 0 }} 期
                         ｜ 每期 {{ r.amount }}
                       </div>
 
