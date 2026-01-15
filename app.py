@@ -494,6 +494,9 @@ def logout():
     return clear_session_cookie(resp)
 
 
+from datetime import date
+
+
 @app.post("/add")
 def add_record(
     request: Request,
@@ -510,14 +513,19 @@ def add_record(
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
 
     init_db()
+
+    # ✅ 新增當天不收款：last_paid_day 設為 current_day
+    current_day = (date.today() - date.fromisoformat(created_date)).days
+
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(f"""
             INSERT INTO records
             (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
-            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, 0, {PH})
+            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, {PH}, {PH})
             """, (
-                created_date, name, face_value, total_amount, periods, amount, interval_days, user["user_id"]
+                created_date, name, face_value, total_amount, periods, amount, interval_days,
+                current_day, user["user_id"]
             ))
         conn.commit()
 
