@@ -82,11 +82,22 @@
             {% if rows|length == 0 %}
               <p class="muted">目前沒有資料</p>
             {% else %}
-              <div class="list">
-                {% for r in rows %}
-                  <div class="row">
-                    <div class="row-main">
-                      <div class="title">{{ r.name }}</div>
+             <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
+
+               {% set sorted_rows = rows|sort(attribute='interval_days') %}
+               {% set ns = namespace(last_interval=None) %}
+
+               {% for r in sorted_rows %}
+                 {% if ns.last_interval != r.interval_days %}
+                   {% set ns.last_interval = r.interval_days %}
+                   <div class="meta" style="margin:10px 0 6px; font-weight:700;">
+                     ✅ 每 {{ r.interval_days }} 天收款
+                   </div>
+                {% endif %}
+
+                <div class="row">
+                 <div class="row-main">
+                   <div class="title">{{ r.name }}</div>
                       <div class="meta">
                         {% set paid_sum = (r.paid_count * r.amount) %}
                         {% set face_left = (r.face_value - paid_sum) %}
