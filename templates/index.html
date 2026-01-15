@@ -213,7 +213,16 @@
                 <li>
                   {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
                   {% set delta = -r.days_left %}
-                  {% set overdue_periods = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
+
+                  {# 先算逾期幾期（原始） #}
+                  {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
+
+                  {# 剩餘期數 = 總期數 - 已繳期數（下限 0） #}
+                  {% set remaining = (r.periods - r.paid_count) %}
+                  {% if remaining < 0 %}{% set remaining = 0 %}{% endif %}
+
+                  {# 逾期期數上限：不能超過剩餘期數 #}
+                  {% set overdue_periods = overdue_raw if overdue_raw < remaining else remaining %}
 
                   ❗ {{ r.name }}（逾期 {{ overdue_periods }} 期）
                   <form action="/pay/{{ r.id }}" method="post"
@@ -228,8 +237,8 @@
                     )
                     <button class="btn" type="submit">補繳</button>
                   </form>
+                 </li>
 
-                </li>
 
               {% endfor %}
               </ul>
