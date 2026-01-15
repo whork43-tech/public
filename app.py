@@ -227,7 +227,7 @@ def calc_current_day(created_date_obj: date) -> int:
 
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
     if last_paid_day <= 0:
-        return interval_days + 1   # ✅ 建立日當天不算收款日
+        return interval_days    # ✅ 建立日當天不算收款日
     return last_paid_day + interval_days
 
 
