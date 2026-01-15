@@ -192,11 +192,16 @@
               <ul class="notice-list">
               {% for r in overdue_records %}
                 <li>
-                  ❗ {{ r.name }}（已逾期 {{ -r.days_left }} 天）
+                  {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
+                  {% set delta = -r.days_left %}
+                  {% set overdue_periods = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
+
+                  ❗ {{ r.name }}（逾期 {{ overdue_periods }} 期）
                   <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
                     <button class="btn" type="submit">補繳</button>
                   </form>
                 </li>
+
               {% endfor %}
               </ul>
             {% endif %}
