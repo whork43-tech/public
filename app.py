@@ -587,7 +587,6 @@ def pay_record(request: Request, record_id: int):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            # 先拿資料（確認是自己的）
             cur.execute(f"""
                 SELECT id, created_date, name, face_value, total_amount, periods, amount,
                        interval_days, paid_count, last_paid_day, user_id
@@ -600,7 +599,6 @@ def pay_record(request: Request, record_id: int):
 
             r = row_to_view(row)
 
-            # 已繳清就不再新增
             if r["paid_count"] >= r["periods"]:
                 return RedirectResponse("/", status_code=303)
 
@@ -610,17 +608,24 @@ def pay_record(request: Request, record_id: int):
                 VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
             """, (date.today().isoformat(), int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
 
-            # ✅ 更新 records：paid_count +1、last_paid_day 更新成今天是第幾天
+            # ✅ 關鍵：last_paid_day 用「付款前的 next_due_day」
+            # 逾期補繳：next_due_day 會小於 current_day → 逾期一天一天減少
+            # 今日到期：next_due_day == current_day → 就是正常已繳款
+            paid_day = int(r["next_due_day"])
+            if paid_day > int(r["current_day"]):
+                paid_day = int(r["current_day"])  # 保底（理論上不會發生）
+
             cur.execute(f"""
                 UPDATE records
                 SET paid_count = paid_count + 1,
                     last_paid_day = {PH}
                 WHERE id = {PH} AND user_id = {PH}
-            """, (r["current_day"], r["id"], user["user_id"]))
+            """, (paid_day, int(r["id"]), int(user["user_id"])))
 
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
+
 
 
 @app.post("/delete/{record_id}")
