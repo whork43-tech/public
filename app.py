@@ -323,31 +323,52 @@ def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(f"""
-                SELECT id, paid_at, record_name, amount
+                SELECT id, paid_at, record_id, record_name, amount
                 FROM payments
                 WHERE user_id = {PH}
-                ORDER BY paid_at DESC, id DESC
+                ORDER BY record_id ASC, paid_at ASC, id ASC
             """, (user_id,))
             rows = cur.fetchall()
 
-    by_date = {}
+    # 計算每個 record 的第幾期
+    seq = {}  # record_id -> count
+    enriched = []
+
     for r in rows:
         pid = r["id"] if isinstance(r, sqlite3.Row) else r[0]
         paid_at = r["paid_at"] if isinstance(r, sqlite3.Row) else r[1]
-        record_name = r["record_name"] if isinstance(r, sqlite3.Row) else r[2]
-        amount = r["amount"] if isinstance(r, sqlite3.Row) else r[3]
+        record_id = r["record_id"] if isinstance(r, sqlite3.Row) else r[2]
+        record_name = r["record_name"] if isinstance(r, sqlite3.Row) else r[3]
+        amount = r["amount"] if isinstance(r, sqlite3.Row) else r[4]
+
+        seq[record_id] = seq.get(record_id, 0) + 1
+        period_no = seq[record_id]
 
         paid_at_str = paid_at if isinstance(paid_at, str) else paid_at.isoformat()
 
-        by_date.setdefault(paid_at_str, {"date": paid_at_str, "total": 0, "payments": []})
-        by_date[paid_at_str]["total"] += int(amount)
-        by_date[paid_at_str]["payments"].append({
+        enriched.append({
             "id": int(pid),
+            "date": paid_at_str,
             "name": record_name,
             "amount": int(amount),
+            "period_no": int(period_no),
+        })
+
+    # 依日期分組（日期要倒序顯示）
+    by_date = {}
+    for it in enriched:
+        d = it["date"]
+        by_date.setdefault(d, {"date": d, "total": 0, "payments": []})
+        by_date[d]["total"] += it["amount"]
+        by_date[d]["payments"].append({
+            "id": it["id"],
+            "name": it["name"],
+            "amount": it["amount"],
+            "period_no": it["period_no"],
         })
 
     return sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
+
 
 
 # ======================
