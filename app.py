@@ -513,10 +513,8 @@ def add_record(
 
     init_db()
 
-    # ✅ 關鍵：新增當天不算繳款日 → last_paid_day 設為 current_day
-    current_day = (date.today() - date.fromisoformat(created_date)).days
-    if current_day < 0:
-        current_day = 0
+    created_date_obj = date.fromisoformat(created_date)
+    last_paid_day = calc_current_day(created_date_obj)  # ✅ 跟系統一致（含 +1）
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -526,10 +524,10 @@ def add_record(
             VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, {PH}, {PH})
             """, (
                 created_date, name, face_value, total_amount, periods, amount, interval_days,
-                current_day, user["user_id"]
+                last_paid_day, user["user_id"]
             ))
         conn.commit()
-
+        
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
 @app.get("/history")
