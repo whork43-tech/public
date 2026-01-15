@@ -579,11 +579,19 @@ def ping():
 from datetime import date
 
 @app.post("/pay/{record_id}")
-def pay_record(request: Request, record_id: int):
+def pay_record(request: Request, record_id: int, periods: int = Form(1)):
     init_db()
     user = require_login(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+
+    # 防呆
+    try:
+        periods = int(periods)
+    except Exception:
+        periods = 1
+    if periods < 1:
+        periods = 1
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -599,32 +607,55 @@ def pay_record(request: Request, record_id: int):
 
             r = row_to_view(row)
 
-            if r["paid_count"] >= r["periods"]:
+            total_periods = int(r["periods"])
+            paid_count = int(r["paid_count"])
+            remaining = total_periods - paid_count
+            if remaining <= 0:
                 return RedirectResponse("/", status_code=303)
 
-            # ✅ 新增一筆繳款紀錄到 payments
-            cur.execute(f"""
-                INSERT INTO payments (paid_at, amount, record_id, user_id, record_name)
-                VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
-            """, (date.today().isoformat(), int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
+            interval = int(r["interval_days"]) if r.get("interval_days") else 1
+            if interval <= 0:
+                interval = 1
 
-            # ✅ 關鍵：last_paid_day 用「付款前的 next_due_day」
-            # 逾期補繳：next_due_day 會小於 current_day → 逾期一天一天減少
-            # 今日到期：next_due_day == current_day → 就是正常已繳款
-            paid_day = int(r["next_due_day"])
-            if paid_day > int(r["current_day"]):
-                paid_day = int(r["current_day"])  # 保底（理論上不會發生）
+            current_day = int(r["current_day"])
+            next_due_day = int(r["next_due_day"])
+
+            # ✅ 限制最多只能補到「回到今天」（不預繳）
+            if next_due_day < current_day:
+                delta = current_day - next_due_day  # 逾期天數
+                max_pay = ((delta - 1) // interval) + 1  # 逾期幾期
+            else:
+                # 今天到期 or 未到期：一次只允許繳 1 期
+                max_pay = 1
+
+            n = min(periods, remaining, max_pay)
+            if n <= 0:
+                return RedirectResponse("/", status_code=303)
+
+            paid_at = date.today().isoformat()
+
+            # ✅ 寫入 n 筆 payments
+            for _ in range(n):
+                cur.execute(f"""
+                    INSERT INTO payments (paid_at, amount, record_id, user_id, record_name)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
+                """, (paid_at, int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
+
+            # ✅ 更新 records：paid_count + n
+            # ✅ last_paid_day 更新成「最後補到的那一期到期日」
+            new_last_paid_day = next_due_day + (n - 1) * interval
 
             cur.execute(f"""
                 UPDATE records
-                SET paid_count = paid_count + 1,
+                SET paid_count = paid_count + {PH},
                     last_paid_day = {PH}
                 WHERE id = {PH} AND user_id = {PH}
-            """, (paid_day, int(r["id"]), int(user["user_id"])))
+            """, (n, int(new_last_paid_day), int(r["id"]), int(user["user_id"])))
 
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
+
 
 
 
