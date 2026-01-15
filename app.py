@@ -494,7 +494,6 @@ def logout():
     return clear_session_cookie(resp)
 
 
-from datetime import date
 
 
 @app.post("/add")
@@ -514,8 +513,10 @@ def add_record(
 
     init_db()
 
-    # ✅ 新增當天不收款：last_paid_day 設為 current_day
+    # ✅ 關鍵：新增當天不算繳款日 → last_paid_day 設為 current_day
     current_day = (date.today() - date.fromisoformat(created_date)).days
+    if current_day < 0:
+        current_day = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -584,7 +585,6 @@ def ping():
     return {"status": "ok"}
 
 
-from datetime import date
 
 @app.post("/pay/{record_id}")
 def pay_record(request: Request, record_id: int, periods: int = Form(1)):
