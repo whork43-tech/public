@@ -227,7 +227,7 @@ def calc_current_day(created_date_obj: date) -> int:
 
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
     if last_paid_day <= 0:
-        return interval_days
+        return interval_days + 1   # ✅ 建立日當天不算收款日
     return last_paid_day + interval_days
 
 
@@ -513,8 +513,7 @@ def add_record(
 
     init_db()
 
-    created_date_obj = date.fromisoformat(created_date)
-    last_paid_day = calc_current_day(created_date_obj)  # ✅ 跟系統一致（含 +1）
+    last_paid_day = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -527,7 +526,7 @@ def add_record(
                 last_paid_day, user["user_id"]
             ))
         conn.commit()
-        
+
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
 @app.get("/history")
