@@ -79,7 +79,7 @@
                         建立日：{{ r.created_date }}
                         ｜ 票面 {{ r.face_value }}
                         ｜ 總 {{ r.total_amount }}
-                        ｜ {{ r.periods }} 期
+                        ｜ {{ r.periods }} 期｜餘 {{ (r.periods - r.paid_count) if (r.periods - r.paid_count) > 0 else 0 }} 期
                         ｜ 每期 {{ r.amount }}
                       </div>
 
