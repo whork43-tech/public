@@ -120,18 +120,9 @@
 
                      <div class="row-main">
                        <div class="title">{{ r.name }}</div>
-
-                       <!-- 你原本的 meta / notice / actions 全部原封不動放回去 -->
-                       ...
                      </div>
-
-                     <div class="row-actions">
-                       ...
-                     </div>
-                  </div>
-                {% endfor %}
-              </div>
-            </form>
+                    
+            
 
                       <div class="meta">
                         {% set paid_sum = (r.paid_count * r.amount) %}
@@ -206,7 +197,7 @@
             {% endif %}
           </div>
 
-        </div>
+        </form>
 
         <!-- 右邊：通知 -->
         <div class="side">
