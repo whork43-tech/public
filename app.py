@@ -5,6 +5,7 @@ from urllib.parse import quote
 from contextlib import contextmanager
 from datetime import date
 from typing import List
+from fastapi import Form
 
 import psycopg
 from psycopg.rows import tuple_row
@@ -671,7 +672,6 @@ def pay_record(request: Request, record_id: int, periods: int = Form(1)):
 
 @app.post("/delete-multiple")
 def delete_multiple(request: Request, record_ids: List[int] = Form([])):
-    init_db()
     user = require_login(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -679,7 +679,6 @@ def delete_multiple(request: Request, record_ids: List[int] = Form([])):
     if not record_ids:
         return RedirectResponse("/", status_code=303)
 
-    # 組 IN (?, ?, ?) 或 IN (%s, %s, %s)
     placeholders = ",".join([PH] * len(record_ids))
     params = [user["user_id"], *record_ids]
 
