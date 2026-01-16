@@ -85,18 +85,6 @@
 
           
 
-            {% if rows|length == 0 %}
-              <p class="muted">目前沒有資料</p>
-            {% else %}
-             <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
-
-              <div id="bulkBar">
-                <label style="display:flex; align-items:center; gap:6px;">
-                  <input type="checkbox" onclick="toggleSelectAll(this)"> 全選
-                </label>
-                <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">確認刪除勾選</button>
-              </div>
-
               <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
 
                {% set sorted_rows = rows|sort(attribute='interval_days') %}
@@ -284,6 +272,18 @@
               <h2 style="margin:0;">目前資料</h2>
               <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
             </div>
+
+            {% if rows|length == 0 %}
+              <p class="muted">目前沒有資料</p>
+            {% else %}
+             <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
+
+              <div id="bulkBar">
+                <label style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" onclick="toggleSelectAll(this)"> 全選
+                </label>
+                <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">確認刪除勾選</button>
+              </div>
 
       <!-- 取消彈跳通知視窗（不再 alert） -->
 
