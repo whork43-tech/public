@@ -8,12 +8,19 @@ from datetime import date
 import psycopg
 from psycopg.rows import tuple_row
 
+
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeSerializer, BadSignature
 from dotenv import load_dotenv
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+def taipei_today_str() -> str:
+    return datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
+
 
 load_dotenv()
 
@@ -173,7 +180,7 @@ def init_db():
 # Utils
 # ======================
 def today_str() -> str:
-    return date.today().isoformat()
+    taipei_today_str()
 
 
 def hash_password(password: str) -> str:
@@ -637,14 +644,15 @@ def pay_record(request: Request, record_id: int, periods: int = Form(1)):
             if n <= 0:
                 return RedirectResponse("/", status_code=303)
 
-            paid_at = date.today().isoformat()
+            paid_at = taipei_today_str()
 
             # ✅ 寫入 n 筆 payments
             for _ in range(n):
                 cur.execute(f"""
                     INSERT INTO payments (paid_at, amount, record_id, user_id, record_name)
                     VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
-                """, (paid_at, int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
+                """, (taipei_today_str(), int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
+
 
             # ✅ 更新 records：paid_count + n
             # ✅ last_paid_day 更新成「最後補到的那一期到期日」
