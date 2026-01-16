@@ -77,53 +77,27 @@
 
           <!-- ✅ 目前資料 -->
           <div class="card">
-            <div style="display:flex; align-items:center; justify-content:space-between;">
-              <h2 style="margin:0;">目前資料</h2>
-              <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
-            </div>
-
+            <h2>目前資料</h2>
 
             {% if rows|length == 0 %}
               <p class="muted">目前沒有資料</p>
             {% else %}
-             <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
-               <!-- 批次刪除工具列（預設隱藏） -->
-               <div id="bulkBar" style="display:none; margin:10px 0; gap:10px; align-items:center;">
-                 <label style="display:flex; align-items:center; gap:6px;">
-                   <input type="checkbox" onclick="toggleSelectAll(this)">
-                   全選
-                 </label>
+             <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
 
-                 <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">
-                   確認刪除勾選
-                 </button>
-               </div>
+               {% set sorted_rows = rows|sort(attribute='interval_days') %}
+               {% set ns = namespace(last_interval=None) %}
 
-               <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
+               {% for r in sorted_rows %}
+                 {% if ns.last_interval != r.interval_days %}
+                   {% set ns.last_interval = r.interval_days %}
+                   <div class="meta" style="margin:10px 0 6px; font-weight:700;">
+                     ✅ {{ r.interval_days }} 天收款
+                   </div>
+                {% endif %}
 
-                 {% set sorted_rows = rows|sort(attribute='interval_days') %}
-                 {% set ns = namespace(last_interval=None) %}
-
-                 {% for r in sorted_rows %}
-                   {% if ns.last_interval != r.interval_days %}
-                     {% set ns.last_interval = r.interval_days %}
-                     <div class="meta" style="margin:10px 0 6px; font-weight:700;">
-                       ✅ {{ r.interval_days }} 天收款
-                     </div>
-                   {% endif %}
-
-                   <div class="row">
-                     <!-- ✅ 勾選框：預設隱藏，進入批次模式才顯示 -->
-                     <div class="bulkBox" style="display:none; padding:10px 8px 0 0;">
-                       <input type="checkbox" name="record_ids" value="{{ r.id }}">
-                     </div>
-
-                     <div class="row-main">
-                       <div class="title">{{ r.name }}</div>
-                     </div>
-                    
-            
-
+                <div class="row">
+                 <div class="row-main">
+                   <div class="title">{{ r.name }}</div>
                       <div class="meta">
                         {% set paid_sum = (r.paid_count * r.amount) %}
                         {% set face_left = (r.face_value - paid_sum) %}
@@ -197,7 +171,7 @@
             {% endif %}
           </div>
 
-        </form>
+        </div>
 
         <!-- 右邊：通知 -->
         <div class="side">
@@ -289,35 +263,5 @@
 
     {% endif %}
   </div>
-
-<script>
-  let bulkMode = false;
-
-  function toggleBulkMode() {
-    bulkMode = !bulkMode;
-
-    document.getElementById('bulkBar').style.display = bulkMode ? 'flex' : 'none';
-    document.querySelectorAll('.bulkBox').forEach(el => el.style.display = bulkMode ? 'block' : 'none');
-
-    // 關閉批次模式時，清空勾選
-    if (!bulkMode) {
-      document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = false);
-    }
-  }
-
-  function toggleSelectAll(master) {
-    document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = master.checked);
-  }
-
-  function confirmBulkDelete() {
-    const checked = document.querySelectorAll('input[name="record_ids"]:checked').length;
-    if (checked === 0) {
-      alert('請先勾選要刪除的資料');
-      return false;
-    }
-    return confirm(`確定要刪除 ${checked} 筆資料嗎？`);
-  }
-</script>
-
 </body>
 </html>
