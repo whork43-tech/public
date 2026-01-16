@@ -551,6 +551,29 @@ def history(request: Request):
         {"request": request, "user": user, "groups": groups}
     )
 
+@app.post("/history/delete-multiple")
+def delete_payments_multiple(request: Request, payment_ids: List[int] = Form([])):
+    init_db()
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if not payment_ids:
+        return RedirectResponse("/history", status_code=303)
+
+    placeholders = ",".join([PH] * len(payment_ids))
+    params = [user["user_id"], *payment_ids]
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"DELETE FROM payments WHERE user_id = {PH} AND id IN ({placeholders})",
+                params
+            )
+        conn.commit()
+
+    return RedirectResponse("/history", status_code=303)
+
 
 @app.post("/history/delete")
 def delete_payment(request: Request, payment_id: int = Form(...)):
