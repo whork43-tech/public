@@ -83,12 +83,7 @@
             <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
           </div>
 
-          <!-- ✅ 目前資料 -->
-          <div class="card" id="currentCard">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-              <h2 style="margin:0;">目前資料</h2>
-              <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
-            </div>
+          
 
             {% if rows|length == 0 %}
               <p class="muted">目前沒有資料</p>
@@ -282,6 +277,13 @@
 
         </div>
       </div>
+
+     <!-- ✅ 目前資料 -->
+          <div class="card" id="currentCard">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+              <h2 style="margin:0;">目前資料</h2>
+              <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
+            </div>
 
       <!-- 取消彈跳通知視窗（不再 alert） -->
 
