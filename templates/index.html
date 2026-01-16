@@ -14,6 +14,14 @@
       padding-right: 6px;
     }
     .notice-list li { margin-bottom: 8px; }
+
+
+    /* 目前資料：多筆刪除模式 */
+    #bulkBar{ display:none; align-items:center; gap:10px; margin:10px 0; }
+    .bulkBox{ display:none; padding: 10px 8px 0 0; }
+    .bulk-mode #bulkBar{ display:flex; }
+    .bulk-mode .bulkBox{ display:block; }
+
   </style>
 
 </head>
@@ -76,13 +84,25 @@
           </div>
 
           <!-- ✅ 目前資料 -->
-          <div class="card">
-            <h2>目前資料</h2>
+          <div class="card" id="currentCard">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+              <h2 style="margin:0;">目前資料</h2>
+              <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
+            </div>
 
             {% if rows|length == 0 %}
               <p class="muted">目前沒有資料</p>
             {% else %}
-             <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
+             <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
+
+              <div id="bulkBar">
+                <label style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" onclick="toggleSelectAll(this)"> 全選
+                </label>
+                <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">確認刪除勾選</button>
+              </div>
+
+              <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
 
                {% set sorted_rows = rows|sort(attribute='interval_days') %}
                {% set ns = namespace(last_interval=None) %}
@@ -96,6 +116,9 @@
                 {% endif %}
 
                 <div class="row">
+                 <div class="bulkBox">
+                   <input type="checkbox" name="record_ids" value="{{ r.id }}">
+                 </div>
                  <div class="row-main">
                    <div class="title">{{ r.name }}</div>
                       <div class="meta">
@@ -168,6 +191,7 @@
                   </div>
                 {% endfor %}
               </div>
+             </form>
             {% endif %}
           </div>
 
@@ -263,5 +287,27 @@
 
     {% endif %}
   </div>
+
+<script>
+  function toggleBulkMode(){
+    const card = document.getElementById('currentCard');
+    card.classList.toggle('bulk-mode');
+    // 關閉時清空勾選
+    if(!card.classList.contains('bulk-mode')){
+      document.querySelectorAll('input[name="record_ids"]').forEach(cb=>cb.checked=false);
+      const all = document.getElementById('bulkSelectAll');
+      if(all) all.checked=false;
+    }
+  }
+  function toggleSelectAll(master){
+    document.querySelectorAll('input[name="record_ids"]').forEach(cb=>cb.checked=master.checked);
+  }
+  function confirmBulkDelete(){
+    const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
+    if(n===0){ alert('請先勾選要刪除的資料'); return false; }
+    return confirm(`確定要刪除 ${n} 筆資料嗎？`);
+  }
+</script>
+
 </body>
 </html>
