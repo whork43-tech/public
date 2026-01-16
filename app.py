@@ -4,10 +4,10 @@ import sqlite3
 from urllib.parse import quote
 from contextlib import contextmanager
 from datetime import date
+from typing import List
 
 import psycopg
 from psycopg.rows import tuple_row
-
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
@@ -669,6 +669,29 @@ def pay_record(request: Request, record_id: int, periods: int = Form(1)):
 
     return RedirectResponse("/", status_code=303)
 
+@app.post("/delete-multiple")
+def delete_multiple(request: Request, record_ids: List[int] = Form([])):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if not record_ids:
+        return RedirectResponse("/", status_code=303)
+
+    # 組 IN (?, ?, ?) 或 IN (%s, %s, %s)
+    placeholders = ",".join([PH] * len(record_ids))
+    params = [user["user_id"], *record_ids]
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"DELETE FROM records WHERE user_id = {PH} AND id IN ({placeholders})",
+                params
+            )
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
 
 
 
