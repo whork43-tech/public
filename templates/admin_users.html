@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>後台 - 帳號列表</title>
+  <link rel="stylesheet" href="/static/style1.css">
+</head>
+<body>
+  <div class="layout" style="grid-template-columns: 1fr;">
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <h2 style="margin:0;">後台｜所有帳號</h2>
+        <a class="btn" href="/">回首頁</a>
+      </div>
+
+      <div style="margin-top:12px;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">ID</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">帳號</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #f2f2f2;">{{ u.id }}</td>
+              <td style="padding:8px; border-bottom:1px solid #f2f2f2;">{{ u.username }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        {% if users|length == 0 %}
+          <p class="muted" style="margin-top:12px;">目前沒有帳號</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
