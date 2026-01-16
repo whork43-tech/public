@@ -180,7 +180,7 @@ def init_db():
 # Utils
 # ======================
 def today_str() -> str:
-    taipei_today_str()
+    return taipei_today_str()
 
 
 def hash_password(password: str) -> str:
