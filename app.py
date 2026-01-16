@@ -38,6 +38,8 @@ templates = Jinja2Templates(directory="templates")
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-me")
 serializer = URLSafeSerializer(SECRET_KEY, salt="session")
 
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip()
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 # 本機預設 sqlite
@@ -224,6 +226,15 @@ def require_login(request: Request):
     if not isinstance(user.get("user_id"), int):
         return None
     return user
+
+def require_admin(request: Request):
+    user = require_login(request)
+    if not user:
+        return None
+    # 用登入者的 username 判斷是否管理員
+    if ADMIN_USERNAME and user.get("username") == ADMIN_USERNAME:
+        return user
+    return None
 
 
 # ======================
@@ -550,6 +561,35 @@ def history(request: Request):
         "history.html",
         {"request": request, "user": user, "groups": groups}
     )
+
+@app.get("/admin/users")
+def admin_users(request: Request):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"""
+                SELECT id, username
+                FROM users
+                ORDER BY id DESC
+            """)
+            rows = cur.fetchall()
+
+    users = []
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            users.append({"id": int(r["id"]), "username": r["username"]})
+        else:
+            users.append({"id": int(r[0]), "username": r[1]})
+
+    return templates.TemplateResponse(
+        "admin_users.html",
+        {"request": request, "user": admin, "users": users}
+    )
+
 
 @app.post("/history/delete-multiple")
 def delete_payments_multiple(request: Request, payment_ids: List[int] = Form([])):
