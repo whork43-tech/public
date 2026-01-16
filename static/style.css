@@ -36,19 +36,7 @@ h3{ margin: 12px 0 8px; font-size: 15px; color: #222; }
 }
 
 /* ====== Layout: left main + right side ====== */
-.layout{
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  grid-template-rows: auto auto;   /* 左欄兩塊：功能 + 目前資料 */
-  grid-auto-flow: column;          /* 先填滿左欄兩列，再放到右欄 */
-  gap: 16px;
-  align-items: start;
-}
 
-/* 右邊通知：跨兩列，對齊整個左欄高度 */
-.side{
-  grid-row: 1 / 3;
-}
 
 @media (max-width: 980px){
   .layout{
@@ -202,37 +190,34 @@ h3{ margin: 12px 0 8px; font-size: 15px; color: #222; }
   grid-column: 1 / 2; /* 固定在左欄 */
 }
 
-/* ===== 固定三塊位置：功能在上、目前資料在下、通知在右 ===== */
+/* ===== 桌機版：功能在上、目前資料在下、通知在右 ===== */
 .layout{
   display: grid;
   grid-template-columns: 1fr 360px;
   grid-template-rows: auto auto;
   gap: 16px;
   align-items: start;
-
-  /* ✅ 關掉自動欄流，避免順序亂跳 */
-  grid-auto-flow: row;
 }
 
-/* 左欄第 1 列：功能 */
+/* 左欄上：功能 */
 .main{
   grid-column: 1 / 2;
   grid-row: 1 / 2;
 }
 
-/* 左欄第 2 列：目前資料 */
+/* 左欄下：目前資料 */
 #currentCard{
   grid-column: 1 / 2;
   grid-row: 2 / 3;
 }
 
-/* 右欄：通知跨兩列 */
+/* 右欄：通知 */
 .side{
   grid-column: 2 / 3;
   grid-row: 1 / 3;
 }
 
-/* ===== 手機：改成直排（功能→通知→目前資料） ===== */
+/* ===== 手機：直排 ===== */
 @media (max-width: 980px){
   .layout{
     grid-template-columns: 1fr;
