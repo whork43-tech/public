@@ -44,8 +44,23 @@ h3{ margin: 12px 0 8px; font-size: 15px; color: #222; }
 }
 
 @media (max-width: 980px){
-  .layout{ grid-template-columns: 1fr; }
+  .layout{
+    grid-template-columns: 1fr;
+  }
+
+  .main{
+    grid-row: 1;
+  }
+
+  .side{
+    grid-row: 2;
+  }
+
+  #currentCard{
+    grid-row: 3; /* 目前資料一定最後 */
+  }
 }
+
 
 /* ====== Buttons ====== */
 .btn{
@@ -180,4 +195,9 @@ h3{ margin: 12px 0 8px; font-size: 15px; color: #222; }
 
 .shadow-soft {
   box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+}
+
+/* ===== 目前資料位置控制 ===== */
+#currentCard{
+  grid-column: 1 / 2; /* 固定在左欄 */
 }
