@@ -806,7 +806,7 @@ def ping():
 def pay_record(
     request: Request,
     record_id: int,
-    periods: int = Form(1),  # 右邊逾期補繳會傳 periods；今日已繳款沒傳就預設 1
+    periods: str = Form(1),  # 右邊逾期補繳會傳 periods；今日已繳款沒傳就預設 1
 ):
     init_db()
     user = require_login(request)
@@ -922,10 +922,19 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
 
 
 @app.post("/delete-multiple")
-def delete_multiple(request: Request, record_ids: List[int] = Form([])):
+def delete_multiple(request: Request, record_ids: List[str] = Form([])):
     user = require_login(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+
+    # ✅【就是這裡】轉成 int，過濾不合法的值
+    _ids = []
+    for x in record_ids or []:
+        try:
+            _ids.append(int(x))
+        except Exception:
+            pass
+    record_ids = _ids
 
     if not record_ids:
         return RedirectResponse("/", status_code=303)
