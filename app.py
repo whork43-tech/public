@@ -176,30 +176,30 @@ def init_db():
                 );
                 """)
 
-                # 4 expenses（今日開銷）
+             # 4 expenses（今日開銷）※一定要在 if / else 外面
             if IS_SQLITE:
-                    cur.execute("""
-                    CREATE TABLE IF NOT EXISTS expenses (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        spent_at DATE NOT NULL,
-                        item TEXT NOT NULL,
-                        amount INTEGER NOT NULL,
-                        user_id INTEGER NOT NULL,
-                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-                    );
-                    """)
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spent_at DATE NOT NULL,
+                    item TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                """)
             else:
-                    cur.execute("""
-                    CREATE TABLE IF NOT EXISTS expenses (
-                        id SERIAL PRIMARY KEY,
-                        spent_at DATE NOT NULL,
-                        item TEXT NOT NULL,
-                        amount INTEGER NOT NULL,
-                        user_id INTEGER NOT NULL
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id SERIAL PRIMARY KEY,
+                    spent_at DATE NOT NULL,
+                    item TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL
                         REFERENCES users(id)
                         ON DELETE CASCADE
-                    );
-                    """)
+                );
+                """)
 
 
 
@@ -268,7 +268,7 @@ def require_admin(request: Request):
 # Business logic
 # ======================
 def calc_current_day(created_date_obj: date) -> int:
-    return (date.today() - created_date_obj).days + 1
+    return (date.today() - created_date_obj).days
 
 
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
@@ -879,10 +879,22 @@ def delete_record(request: Request, record_id: int):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"DELETE FROM records WHERE id = {PH} AND user_id = {PH}", (record_id, user["user_id"]))
+            # ✅ 先刪該 record 的 payments（避免外鍵限制）
+            cur.execute(
+                f"DELETE FROM payments WHERE record_id = {PH} AND user_id = {PH}",
+                (record_id, user["user_id"])
+            )
+
+            # ✅ 再刪 record 本身
+            cur.execute(
+                f"DELETE FROM records WHERE id = {PH} AND user_id = {PH}",
+                (record_id, user["user_id"])
+            )
+
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
+
 
 
 @app.get("/edit/{record_id}")
