@@ -805,6 +805,83 @@ def pay_record(request: Request, record_id: int, periods: int = Form(1)):
             current_day = int(r["current_day"])
             next_due_day = int(r["next_due_day"])
 
+            # 最多只能補到「回到今天」（不預繳）
+            if next_due_day < current_day:
+                delta = current_day - next_due_day
+                max_pay = ((delta - 1) // interval) + 1
+            else:
+                max_pay = 1
+
+            n = min(periods, remaining, max_pay)
+            if n <= 0:
+                return RedirectResponse("/", status_code=303)
+
+            # 寫入 n 筆 payments（注意：不要 record_name）
+            for _ in range(n):
+                cur.execute(
+                    f"""
+                    INSERT INTO payments (paid_at, amount, record_id, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH})
+                    """,
+                    (taipei_today_str(), int(r["amount"]), int(r["id"]), int(user["user_id"]))
+                )
+
+            # 更新 records
+            new_last_paid_day = next_due_day + (n - 1) * interval
+            cur.execute(
+                f"""
+                UPDATE records
+                SET paid_count = paid_count + {PH},
+                    last_paid_day = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+                """,
+                (n, int(new_last_paid_day), int(r["id"]), int(user["user_id"]))
+            )
+
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    # 防呆
+    try:
+        periods = int(periods)
+    except Exception:
+        periods = 1
+    if periods < 1:
+        periods = 1
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"""
+                SELECT id, created_date, name, face_value, total_amount, periods, amount,
+                       interval_days, paid_count, last_paid_day, user_id
+                FROM records
+                WHERE id = {PH} AND user_id = {PH}
+            """, (record_id, user["user_id"]))
+            row = cur.fetchone()
+            if not row:
+                return RedirectResponse("/", status_code=303)
+
+            r = row_to_view(row)
+
+            total_periods = int(r["periods"])
+            paid_count = int(r["paid_count"])
+            remaining = total_periods - paid_count
+            if remaining <= 0:
+                return RedirectResponse("/", status_code=303)
+
+            interval = int(r["interval_days"]) if r.get("interval_days") else 1
+            if interval <= 0:
+                interval = 1
+
+            current_day = int(r["current_day"])
+            next_due_day = int(r["next_due_day"])
+
             # ✅ 限制最多只能補到「回到今天」（不預繳）
             if next_due_day < current_day:
                 delta = current_day - next_due_day  # 逾期天數
