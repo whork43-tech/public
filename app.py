@@ -606,6 +606,12 @@ def home(request: Request):
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
+    # ✅ 總票面：只計「目前資料＝未結清」(paid_count < periods) 的票面總和
+    total_face_value = sum(
+        int((r.get("face_value") or 0))
+        for r in rows
+        if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
+    )
 
     return templates.TemplateResponse(
         "index.html",
@@ -621,6 +627,8 @@ def home(request: Request):
             "today_total": today_total,
             "today_expense_total": today_expense_total,
             "today_expenses": today_expenses,
+            "today_total": today_total,
+            "total_face_value": total_face_value,
         },
     )
 
