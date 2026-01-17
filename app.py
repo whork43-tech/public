@@ -3,9 +3,9 @@ import hashlib
 import sqlite3
 from urllib.parse import quote
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from typing import List
-from fastapi import Form
+from zoneinfo import ZoneInfo
 
 import psycopg
 from psycopg.rows import tuple_row
@@ -16,8 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeSerializer, BadSignature
 from dotenv import load_dotenv
-from datetime import datetime
-from zoneinfo import ZoneInfo
+
 
 def taipei_today_str() -> str:
     return datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
@@ -39,7 +38,6 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-me")
 serializer = URLSafeSerializer(SECRET_KEY, salt="session")
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip()
-
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 # 本機預設 sqlite
@@ -84,19 +82,21 @@ def _sqlite_has_column(cur, table: str, col: str) -> bool:
 def init_db():
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-
             if IS_SQLITE:
                 # 1 users
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL
                 );
-                """)
+                """
+                )
 
                 # 2 records（✅加 face_value）
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS records (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_date DATE NOT NULL,
@@ -111,10 +111,12 @@ def init_db():
                     user_id INTEGER NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
-                """)
+                """
+                )
 
                 # 3 payments（一定最後）
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS payments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     paid_at DATE NOT NULL,
@@ -124,26 +126,32 @@ def init_db():
                     FOREIGN KEY(record_id) REFERENCES records(id) ON DELETE CASCADE,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
-                """)
+                """
+                )
 
                 # ✅ 自動補 records.face_value（舊資料庫才需要）
                 cur.execute("PRAGMA table_info(records);")
                 cols = [row[1] for row in cur.fetchall()]  # row[1] = 欄位名
                 if "face_value" not in cols:
-                    cur.execute("ALTER TABLE records ADD COLUMN face_value INTEGER NOT NULL DEFAULT 0;")
+                    cur.execute(
+                        "ALTER TABLE records ADD COLUMN face_value INTEGER NOT NULL DEFAULT 0;"
+                    )
 
             else:
                 # users
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL
                 );
-                """)
+                """
+                )
 
                 # records（✅加 face_value）
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS records (
                     id SERIAL PRIMARY KEY,
                     created_date DATE NOT NULL,
@@ -159,10 +167,12 @@ def init_db():
                         REFERENCES users(id)
                         ON DELETE CASCADE
                 );
-                """)
+                """
+                )
 
                 # payments
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS payments (
                     id SERIAL PRIMARY KEY,
                     paid_at DATE NOT NULL,
@@ -174,11 +184,13 @@ def init_db():
                         REFERENCES users(id)
                         ON DELETE CASCADE
                 );
-                """)
+                """
+                )
 
-                         # 4 expenses（今日開銷）※一定要在 if / else 外面
+            # 4 expenses（今日開銷）※一定要在 if / else 外面
             if IS_SQLITE:
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS expenses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     spent_at DATE NOT NULL,
@@ -187,9 +199,11 @@ def init_db():
                     user_id INTEGER NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
-                """)
+                """
+                )
             else:
-                cur.execute("""
+                cur.execute(
+                    """
                 CREATE TABLE IF NOT EXISTS expenses (
                     id SERIAL PRIMARY KEY,
                     spent_at DATE NOT NULL,
@@ -199,9 +213,8 @@ def init_db():
                         REFERENCES users(id)
                         ON DELETE CASCADE
                 );
-                """)
-
-
+                """
+                )
 
         conn.commit()
 
@@ -254,6 +267,7 @@ def require_login(request: Request):
         return None
     return user
 
+
 def require_admin(request: Request):
     user = require_login(request)
     if not user:
@@ -273,7 +287,7 @@ def calc_current_day(created_date_obj: date) -> int:
 
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
     if last_paid_day <= 0:
-        return interval_days    # ✅ 建立日當天不算收款日
+        return interval_days  # ✅ 建立日當天不算收款日
     return last_paid_day + interval_days
 
 
@@ -328,13 +342,16 @@ def row_to_view(row):
 def get_all_records_for_user(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT id, created_date, name, face_value, total_amount, periods, amount,
                        interval_days, paid_count, last_paid_day, user_id
                 FROM records
                 WHERE user_id = {PH}
                 ORDER BY id DESC
-            """, (user_id,))
+            """,
+                (user_id,),
+            )
             rows = cur.fetchall()
             return [row_to_view(r) for r in rows]
 
@@ -342,12 +359,15 @@ def get_all_records_for_user(user_id: int):
 def get_record_for_user(rid: int, user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT id, created_date, name, face_value, total_amount, periods, amount,
                        interval_days, paid_count, last_paid_day, user_id
                 FROM records
                 WHERE id = {PH} AND user_id = {PH}
-            """, (rid, user_id))
+            """,
+                (rid, user_id),
+            )
             row = cur.fetchone()
             return row_to_view(row) if row else None
 
@@ -357,7 +377,7 @@ def get_today_total_for_user(user_id: int) -> int:
         with get_cursor(conn) as cur:
             cur.execute(
                 f"SELECT COALESCE(SUM(amount), 0) FROM payments WHERE user_id = {PH} AND paid_at = {PH}",
-                (user_id, today_str())
+                (user_id, today_str()),
             )
             v = cur.fetchone()
             if isinstance(v, sqlite3.Row):
@@ -375,14 +395,16 @@ def get_today_expenses_for_user(user_id: int):
                 WHERE user_id = {PH} AND spent_at = {PH}
                 ORDER BY id DESC
                 """,
-                (user_id, today_str())
+                (user_id, today_str()),
             )
             rows = cur.fetchall()
 
     out = []
     for r in rows:
         if isinstance(r, sqlite3.Row):
-            out.append({"id": int(r["id"]), "item": r["item"], "amount": int(r["amount"])})
+            out.append(
+                {"id": int(r["id"]), "item": r["item"], "amount": int(r["amount"])}
+            )
         else:
             out.append({"id": int(r[0]), "item": r[2], "amount": int(r[3])})
     return out
@@ -393,7 +415,7 @@ def get_today_expense_total_for_user(user_id: int) -> int:
         with get_cursor(conn) as cur:
             cur.execute(
                 f"SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = {PH} AND spent_at = {PH}",
-                (user_id, today_str())
+                (user_id, today_str()),
             )
             v = cur.fetchone()
             if isinstance(v, sqlite3.Row):
@@ -401,19 +423,22 @@ def get_today_expense_total_for_user(user_id: int) -> int:
             return int(v[0]) if v and v[0] is not None else 0
 
 
-
 def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT p.id, p.paid_at, p.record_id, r.name, p.amount
                 FROM payments p
                 JOIN records r ON r.id = p.record_id
                 WHERE p.user_id = {PH}
                 ORDER BY p.record_id ASC, p.paid_at ASC, p.id ASC
-            """, (user_id,))
+            """,
+                (user_id,),
+            )
             rows = cur.fetchall()
 
+    # 計算每個 record 的第幾期
     seq = {}
     enriched = []
 
@@ -429,25 +454,32 @@ def get_history_grouped(user_id: int):
 
         paid_at_str = paid_at if isinstance(paid_at, str) else paid_at.isoformat()
 
-        enriched.append({
-            "id": int(pid),
-            "date": paid_at_str,
-            "name": record_name,
-            "amount": int(amount),
-            "period_no": int(period_no),
-        })
+        enriched.append(
+            {
+                "id": int(pid),
+                "date": paid_at_str,
+                "name": record_name,
+                "amount": int(amount),
+                "period_no": int(period_no),
+            }
+        )
 
+    # 依日期分組（日期要倒序顯示）
     by_date = {}
     for it in enriched:
         d = it["date"]
         by_date.setdefault(d, {"date": d, "total": 0, "payments": []})
         by_date[d]["total"] += it["amount"]
-        by_date[d]["payments"].append({
-            "id": it["id"],
-            "name": it["name"],
-            "amount": it["amount"],
-            "period_no": it["period_no"],
-        })
+        by_date[d]["payments"].append(
+            {
+                "id": it["id"],
+                "name": it["name"],
+                "amount": it["amount"],
+                "period_no": it["period_no"],
+            }
+        )
+
+    return sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
 
 
 # ======================
@@ -473,10 +505,8 @@ def home(request: Request):
 
     if not user:
         return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "user": None, "paid_msg": paid_msg}
+            "index.html", {"request": request, "user": None, "paid_msg": paid_msg}
         )
-
 
     # ✅ 取出該使用者所有分期資料
     rows = get_all_records_for_user(user["user_id"])
@@ -486,11 +516,10 @@ def home(request: Request):
     overdue_records = [r for r in rows if r["is_overdue"]]
     due_today_count = len(today_due_records)
 
-    # ✅ 今日總收
+    # ✅ 今日總收 / 今日開銷
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
-
 
     return templates.TemplateResponse(
         "index.html",
@@ -506,9 +535,8 @@ def home(request: Request):
             "today_total": today_total,
             "today_expense_total": today_expense_total,
             "today_expenses": today_expenses,
-        }
+        },
     )
-
 
 
 @app.get("/add")
@@ -517,10 +545,7 @@ def add_page(request: Request):
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
 
-    return templates.TemplateResponse(
-        "add.html",
-        {"request": request, "user": user}
-    )
+    return templates.TemplateResponse("add.html", {"request": request, "user": user})
 
 
 @app.post("/register")
@@ -534,20 +559,24 @@ def register(username: str = Form(...), password: str = Form(...)):
                 if IS_SQLITE:
                     cur.execute(
                         "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                        (username, pw_hash)
+                        (username, pw_hash),
                     )
                     user_id = cur.lastrowid
                 else:
                     cur.execute(
                         "INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id",
-                        (username, pw_hash)
+                        (username, pw_hash),
                     )
                     user_id = cur.fetchone()[0]
             conn.commit()
     except Exception:
-        return RedirectResponse(url="/?paid_msg=" + quote("帳號已存在或註冊失敗"), status_code=303)
+        return RedirectResponse(
+            url="/?paid_msg=" + quote("帳號已存在或註冊失敗"), status_code=303
+        )
 
-    resp = RedirectResponse(url="/?paid_msg=" + quote("註冊成功，已登入"), status_code=303)
+    resp = RedirectResponse(
+        url="/?paid_msg=" + quote("註冊成功，已登入"), status_code=303
+    )
     return set_session_cookie(resp, user_id=int(user_id), username=username)
 
 
@@ -557,11 +586,16 @@ def login(username: str = Form(...), password: str = Form(...)):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"SELECT id, password_hash FROM users WHERE username = {PH}", (username,))
+            cur.execute(
+                f"SELECT id, password_hash FROM users WHERE username = {PH}",
+                (username,),
+            )
             row = cur.fetchone()
 
     if not row:
-        return RedirectResponse(url="/?paid_msg=" + quote("帳號不存在"), status_code=303)
+        return RedirectResponse(
+            url="/?paid_msg=" + quote("帳號不存在"), status_code=303
+        )
 
     user_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
     pw_hash = row["password_hash"] if isinstance(row, sqlite3.Row) else row[1]
@@ -577,8 +611,6 @@ def login(username: str = Form(...), password: str = Form(...)):
 def logout():
     resp = RedirectResponse(url="/?paid_msg=" + quote("已登出"), status_code=303)
     return clear_session_cookie(resp)
-
-
 
 
 @app.post("/add")
@@ -597,22 +629,32 @@ def add_record(
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
 
     init_db()
-
     last_paid_day = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
             INSERT INTO records
             (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
             VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, {PH}, {PH})
-            """, (
-                created_date, name, face_value, total_amount, periods, amount, interval_days,
-                last_paid_day, user["user_id"]
-            ))
+            """,
+                (
+                    created_date,
+                    name,
+                    face_value,
+                    total_amount,
+                    periods,
+                    amount,
+                    interval_days,
+                    last_paid_day,
+                    user["user_id"],
+                ),
+            )
         conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
+
 
 @app.get("/history")
 def history(request: Request):
@@ -624,9 +666,9 @@ def history(request: Request):
     groups = get_history_grouped(user["user_id"])
 
     return templates.TemplateResponse(
-        "history.html",
-        {"request": request, "user": user, "groups": groups}
+        "history.html", {"request": request, "user": user, "groups": groups}
     )
+
 
 @app.get("/admin/users")
 def admin_users(request: Request):
@@ -637,11 +679,13 @@ def admin_users(request: Request):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                """
                 SELECT id, username
                 FROM users
                 ORDER BY id DESC
-            """)
+            """
+            )
             rows = cur.fetchall()
 
     users = []
@@ -652,8 +696,7 @@ def admin_users(request: Request):
             users.append({"id": int(r[0]), "username": r[1]})
 
     return templates.TemplateResponse(
-        "admin_users.html",
-        {"request": request, "user": admin, "users": users}
+        "admin_users.html", {"request": request, "user": admin, "users": users}
     )
 
 
@@ -674,7 +717,7 @@ def delete_payments_multiple(request: Request, payment_ids: List[int] = Form([])
         with get_cursor(conn) as cur:
             cur.execute(
                 f"DELETE FROM payments WHERE user_id = {PH} AND id IN ({placeholders})",
-                params
+                params,
             )
         conn.commit()
 
@@ -690,28 +733,26 @@ def delete_payment(request: Request, payment_id: int = Form(...)):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 DELETE FROM payments
                 WHERE id = {PH} AND user_id = {PH}
-            """, (payment_id, user["user_id"]))
+            """,
+                (payment_id, user["user_id"]),
+            )
         conn.commit()
 
     return RedirectResponse("/history", status_code=303)
 
 
 @app.get("/add-page")
-def add_page(request: Request):
+def add_page_2(request: Request):
     user = require_login(request)
     if not user:
         return RedirectResponse(url="/", status_code=303)
 
-    return templates.TemplateResponse(
-        "add.html",
-        {
-            "request": request,
-            "user": user
-        }
-    )
+    return templates.TemplateResponse("add.html", {"request": request, "user": user})
+
 
 @app.get("/expense-page")
 def expense_page(request: Request):
@@ -720,8 +761,7 @@ def expense_page(request: Request):
         return RedirectResponse(url="/", status_code=303)
 
     return templates.TemplateResponse(
-        "expense_add.html",
-        {"request": request, "user": user}
+        "expense_add.html", {"request": request, "user": user}
     )
 
 
@@ -750,7 +790,7 @@ def add_expense(
         with get_cursor(conn) as cur:
             cur.execute(
                 f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                (today_str(), item, amount, user["user_id"])
+                (today_str(), item, amount, user["user_id"]),
             )
         conn.commit()
 
@@ -760,192 +800,6 @@ def add_expense(
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
-
-
-
-@app.post("/pay/{record_id}")
-def pay_record(request: Request, record_id: int, periods: int = Form(1)):
-    init_db()
-    user = require_login(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-
-    # 防呆
-    try:
-        periods = int(periods)
-    except Exception:
-        periods = 1
-    if periods < 1:
-        periods = 1
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(f"""
-                SELECT id, created_date, name, face_value, total_amount, periods, amount,
-                       interval_days, paid_count, last_paid_day, user_id
-                FROM records
-                WHERE id = {PH} AND user_id = {PH}
-            """, (record_id, user["user_id"]))
-            row = cur.fetchone()
-            if not row:
-                return RedirectResponse("/", status_code=303)
-
-            r = row_to_view(row)
-
-            total_periods = int(r["periods"])
-            paid_count = int(r["paid_count"])
-            remaining = total_periods - paid_count
-            if remaining <= 0:
-                return RedirectResponse("/", status_code=303)
-
-            interval = int(r["interval_days"]) if r.get("interval_days") else 1
-            if interval <= 0:
-                interval = 1
-
-            current_day = int(r["current_day"])
-            next_due_day = int(r["next_due_day"])
-
-            # 最多只能補到「回到今天」（不預繳）
-            if next_due_day < current_day:
-                delta = current_day - next_due_day
-                max_pay = ((delta - 1) // interval) + 1
-            else:
-                max_pay = 1
-
-            n = min(periods, remaining, max_pay)
-            if n <= 0:
-                return RedirectResponse("/", status_code=303)
-
-            # 寫入 n 筆 payments（注意：不要 record_name）
-            for _ in range(n):
-                cur.execute(
-                    f"""
-                    INSERT INTO payments (paid_at, amount, record_id, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH})
-                    """,
-                    (taipei_today_str(), int(r["amount"]), int(r["id"]), int(user["user_id"]))
-                )
-
-            # 更新 records
-            new_last_paid_day = next_due_day + (n - 1) * interval
-            cur.execute(
-                f"""
-                UPDATE records
-                SET paid_count = paid_count + {PH},
-                    last_paid_day = {PH}
-                WHERE id = {PH} AND user_id = {PH}
-                """,
-                (n, int(new_last_paid_day), int(r["id"]), int(user["user_id"]))
-            )
-
-        conn.commit()
-
-    return RedirectResponse("/", status_code=303)
-
-    init_db()
-    user = require_login(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-
-    # 防呆
-    try:
-        periods = int(periods)
-    except Exception:
-        periods = 1
-    if periods < 1:
-        periods = 1
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(f"""
-                SELECT id, created_date, name, face_value, total_amount, periods, amount,
-                       interval_days, paid_count, last_paid_day, user_id
-                FROM records
-                WHERE id = {PH} AND user_id = {PH}
-            """, (record_id, user["user_id"]))
-            row = cur.fetchone()
-            if not row:
-                return RedirectResponse("/", status_code=303)
-
-            r = row_to_view(row)
-
-            total_periods = int(r["periods"])
-            paid_count = int(r["paid_count"])
-            remaining = total_periods - paid_count
-            if remaining <= 0:
-                return RedirectResponse("/", status_code=303)
-
-            interval = int(r["interval_days"]) if r.get("interval_days") else 1
-            if interval <= 0:
-                interval = 1
-
-            current_day = int(r["current_day"])
-            next_due_day = int(r["next_due_day"])
-
-            # ✅ 限制最多只能補到「回到今天」（不預繳）
-            if next_due_day < current_day:
-                delta = current_day - next_due_day  # 逾期天數
-                max_pay = ((delta - 1) // interval) + 1  # 逾期幾期
-            else:
-                # 今天到期 or 未到期：一次只允許繳 1 期
-                max_pay = 1
-
-            n = min(periods, remaining, max_pay)
-            if n <= 0:
-                return RedirectResponse("/", status_code=303)
-
-            paid_at = taipei_today_str()
-
-            # ✅ 寫入 n 筆 payments
-            for _ in range(n):
-                (cur.execute(
-                    f"""
-                    INSERT INTO payments (paid_at, amount, record_id, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH})
-                    """,
-                    (taipei_today_str(), int(r["amount"]), int(r["id"]), int(user["user_id"]))
-              ))
-
-
-            # ✅ 更新 records：paid_count + n
-            # ✅ last_paid_day 更新成「最後補到的那一期到期日」
-            new_last_paid_day = next_due_day + (n - 1) * interval
-
-            cur.execute(f"""
-                UPDATE records
-                SET paid_count = paid_count + {PH},
-                    last_paid_day = {PH}
-                WHERE id = {PH} AND user_id = {PH}
-            """, (n, int(new_last_paid_day), int(r["id"]), int(user["user_id"])))
-
-        conn.commit()
-
-                return RedirectResponse("/", status_code=303)
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            # 寫一筆 payments
-            cur.execute(
-                f"""
-                INSERT INTO payments (paid_at, amount, record_id, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH})
-                """,
-                (today_str(), amount, record_id, user["user_id"])
-            )
-
-            # 直接設為完成
-            cur.execute(
-                f"""
-                UPDATE records
-                SET paid_count = periods,
-                    last_paid_day = {PH}
-                WHERE id = {PH} AND user_id = {PH}
-                """,
-                (999999, record_id, user["user_id"])
-            )
-
-        conn.commit()
-
-    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/settle/{record_id}")
@@ -966,7 +820,7 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
                 INSERT INTO payments (paid_at, amount, record_id, user_id)
                 VALUES ({PH}, {PH}, {PH}, {PH})
                 """,
-                (today_str(), amount, record_id, user["user_id"])
+                (today_str(), amount, record_id, user["user_id"]),
             )
 
             # 直接把 records 標記為完成
@@ -977,7 +831,7 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
                     last_paid_day = {PH}
                 WHERE id = {PH} AND user_id = {PH}
                 """,
-                (999999, record_id, user["user_id"])
+                (999999, record_id, user["user_id"]),
             )
 
         conn.commit()
@@ -1001,12 +855,11 @@ def delete_multiple(request: Request, record_ids: List[int] = Form([])):
         with get_cursor(conn) as cur:
             cur.execute(
                 f"DELETE FROM records WHERE user_id = {PH} AND id IN ({placeholders})",
-                params
+                params,
             )
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
-
 
 
 @app.post("/delete/{record_id}")
@@ -1021,20 +874,18 @@ def delete_record(request: Request, record_id: int):
             # 1️⃣ 刪 payments
             cur.execute(
                 f"DELETE FROM payments WHERE record_id = {PH} AND user_id = {PH}",
-                (record_id, user["user_id"])
+                (record_id, user["user_id"]),
             )
 
             # 2️⃣ 刪 records
             cur.execute(
                 f"DELETE FROM records WHERE id = {PH} AND user_id = {PH}",
-                (record_id, user["user_id"])
+                (record_id, user["user_id"]),
             )
 
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
-
-
 
 
 @app.get("/edit/{record_id}")
@@ -1046,18 +897,23 @@ def edit_page(request: Request, record_id: int):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 SELECT id, created_date, name, face_value, total_amount, periods, amount,
                        interval_days, paid_count, last_paid_day, user_id
                 FROM records
                 WHERE id = {PH} AND user_id = {PH}
-            """, (record_id, user["user_id"]))
+            """,
+                (record_id, user["user_id"]),
+            )
             row = cur.fetchone()
             if not row:
                 return RedirectResponse("/", status_code=303)
 
     r = row_to_view(row)
-    return templates.TemplateResponse("edit.html", {"request": request, "user": user, "r": r})
+    return templates.TemplateResponse(
+        "edit.html", {"request": request, "user": user, "r": r}
+    )
 
 
 @app.post("/edit/{record_id}")
@@ -1078,7 +934,8 @@ def edit_save(
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(f"""
+            cur.execute(
+                f"""
                 UPDATE records
                 SET created_date = {PH},
                     name = {PH},
@@ -1087,7 +944,18 @@ def edit_save(
                     amount = {PH},
                     interval_days = {PH}
                 WHERE id = {PH} AND user_id = {PH}
-            """, (created_date, name, total_amount, periods, amount, interval_days, record_id, user["user_id"]))
+            """,
+                (
+                    created_date,
+                    name,
+                    total_amount,
+                    periods,
+                    amount,
+                    interval_days,
+                    record_id,
+                    user["user_id"],
+                ),
+            )
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
@@ -1095,4 +963,5 @@ def edit_save(
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
