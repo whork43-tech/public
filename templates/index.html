@@ -326,40 +326,38 @@
 
 
 <script>
-  <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
-    initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
-  });
+document.addEventListener('DOMContentLoaded', () => {
+  initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
+  initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
+});
 
-  function initToggle(cardId, btnId, showText, hideText){
-    const el = document.getElementById(cardId);
-    const btn = document.getElementById(btnId);
-    if(!el || !btn) return;
-    const hidden = el.classList.contains('is-hidden');
-    btn.textContent = hidden ? showText : hideText;
+function initToggle(cardId, btnId, showText, hideText){
+  const el = document.getElementById(cardId);
+  const btn = document.getElementById(btnId);
+  if(!el || !btn) return;
+  const hidden = el.classList.contains('is-hidden');
+  btn.textContent = hidden ? showText : hideText;
+  btn.classList.toggle('active', !hidden);
+}
+
+function toggleSection(id, btn){
+  const el = document.getElementById(id);
+  if(!el) return;
+
+  el.classList.toggle('is-hidden');
+  const hidden = el.classList.contains('is-hidden');
+
+  if(btn){
+    if(id === 'currentCard'){
+      btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+    }else if(id === 'expenseCard'){
+      btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
+    }
     btn.classList.toggle('active', !hidden);
   }
+}
 
-  function toggleSection(id, btn){
-    const el = document.getElementById(id);
-    if(!el) return;
-
-    el.classList.toggle('is-hidden');
-    const hidden = el.classList.contains('is-hidden');
-
-    if(btn){
-      // 依 id 決定按鈕文案
-      if(id === 'currentCard'){
-        btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-      }else if(id === 'expenseCard'){
-        btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
-      }
-      btn.classList.toggle('active', !hidden);
-    }
-  }
-
-  function toggleBulkMode(){
+function toggleBulkMode(){
     const card = document.getElementById('currentCard');
     card.classList.toggle('bulk-mode');
     if(!card.classList.contains('bulk-mode')){
@@ -377,6 +375,7 @@
     return confirm(`確定要刪除 ${n} 筆資料嗎？`);
   }
 </script>
+
 
 
 
