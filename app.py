@@ -392,6 +392,7 @@ def get_all_records_for_user(user_id: int):
                        interval_days, paid_count, last_paid_day, user_id
                 FROM records
                 WHERE user_id = {PH}
+                  AND is_deleted = FALSE
                 ORDER BY id DESC
             """,
                 (user_id,),
@@ -987,18 +988,11 @@ def delete_record(request: Request, record_id: int):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            # 1️⃣ 刪 payments
+            # ✅ 不刪 payments、不刪 records，只標記刪除
             cur.execute(
-                f"DELETE FROM payments WHERE record_id = {PH} AND user_id = {PH}",
+                f"UPDATE records SET is_deleted = TRUE WHERE id = {PH} AND user_id = {PH}",
                 (record_id, user["user_id"]),
             )
-
-            # 2️⃣ 刪 records
-            cur.execute(
-                f"DELETE FROM records WHERE id = {PH} AND user_id = {PH}",
-                (record_id, user["user_id"]),
-            )
-
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
