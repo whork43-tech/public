@@ -843,10 +843,10 @@ def pay_record(
             # 寫 payments（記一筆：今天收款）
             cur.execute(
                 f"""
-                INSERT INTO payments (paid_at, amount, record_id, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH})
-                """,
-                (today_str(), pay_amount, record_id, user["user_id"]),
+    INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
+    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
+    """,
+                (today_str(), pay_amount, record_id, r["name"], user["user_id"]),
             )
 
             # 更新 records 的已繳期數 & 最後繳款日
@@ -891,10 +891,10 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
             # 寫一筆 payments（結清）
             cur.execute(
                 f"""
-                INSERT INTO payments (paid_at, amount, record_id, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH})
-                """,
-                (today_str(), amount, record_id, user["user_id"]),
+    INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
+    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
+    """,
+                (today_str(), amount, record_id, r["name"], user["user_id"]),
             )
 
             # ✅ 標記完成 + last_paid_day 用 current_day
