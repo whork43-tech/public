@@ -176,6 +176,32 @@ def init_db():
                 );
                 """)
 
+                # 4 expenses（今日開銷）
+
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    spent_at DATE NOT NULL,
+                    item TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                """)
+            else:
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS expenses (
+                    id SERIAL PRIMARY KEY,
+                    spent_at DATE NOT NULL,
+                    item TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL
+                    REFERENCES users(id)
+                    ON DELETE CASCADE
+                );
+                """)
+
+
         conn.commit()
 
 
@@ -338,6 +364,43 @@ def get_today_total_for_user(user_id: int) -> int:
             return int(v[0]) if v and v[0] is not None else 0
 
 
+def get_today_expenses_for_user(user_id: int):
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT id, spent_at, item, amount
+                FROM expenses
+                WHERE user_id = {PH} AND spent_at = {PH}
+                ORDER BY id DESC
+                """,
+                (user_id, today_str())
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            out.append({"id": int(r["id"]), "item": r["item"], "amount": int(r["amount"])})
+        else:
+            out.append({"id": int(r[0]), "item": r[2], "amount": int(r[3])})
+    return out
+
+
+def get_today_expense_total_for_user(user_id: int) -> int:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = {PH} AND spent_at = {PH}",
+                (user_id, today_str())
+            )
+            v = cur.fetchone()
+            if isinstance(v, sqlite3.Row):
+                return int(v[0])
+            return int(v[0]) if v and v[0] is not None else 0
+
+
+
 def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -414,7 +477,8 @@ def home(request: Request):
     if not user:
         return templates.TemplateResponse(
             "index.html",
-            {"request": request, "user": None, "paid_msg": paid_msg}
+            {"request": request, "user": None, "paid_msg": paid_msg, "today_expense_total": today_expense_total,
+            "today_expenses": today_expenses,}
         )
 
     # ✅ 取出該使用者所有分期資料
@@ -427,6 +491,9 @@ def home(request: Request):
 
     # ✅ 今日總收
     today_total = get_today_total_for_user(user["user_id"])
+    today_expense_total = get_today_expense_total_for_user(user["user_id"])
+    today_expenses = get_today_expenses_for_user(user["user_id"])
+
 
     return templates.TemplateResponse(
         "index.html",
@@ -646,6 +713,49 @@ def add_page(request: Request):
             "user": user
         }
     )
+
+@app.get("/expense-page")
+def expense_page(request: Request):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    return templates.TemplateResponse(
+        "expense_add.html",
+        {"request": request, "user": user}
+    )
+
+
+@app.post("/expense/add")
+def add_expense(
+    request: Request,
+    item: str = Form(...),
+    amount: int = Form(...),
+):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    init_db()
+
+    # 防呆
+    item = (item or "").strip()
+    try:
+        amount = int(amount)
+    except Exception:
+        amount = 0
+    if not item or amount <= 0:
+        return RedirectResponse(url="/expense-page", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                (today_str(), item, amount, user["user_id"])
+            )
+        conn.commit()
+
+    return RedirectResponse(url="/?paid_msg=" + quote("新增開銷完成"), status_code=303)
 
 
 @app.get("/ping")
