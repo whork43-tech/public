@@ -177,7 +177,7 @@ def init_db():
                 """)
 
                 # 4 expenses（今日開銷）
-                if IS_SQLITE:
+            if IS_SQLITE:
                     cur.execute("""
                     CREATE TABLE IF NOT EXISTS expenses (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,7 +188,7 @@ def init_db():
                         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                     );
                     """)
-                else:
+            else:
                     cur.execute("""
                     CREATE TABLE IF NOT EXISTS expenses (
                         id SERIAL PRIMARY KEY,
@@ -476,10 +476,10 @@ def home(request: Request):
     paid_id = int(paid_id) if paid_id and paid_id.isdigit() else None
 
     if not user:
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "user": None, "paid_msg": paid_msg}
-    )
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "user": None, "paid_msg": paid_msg}
+        )
 
 
     # ✅ 取出該使用者所有分期資料
