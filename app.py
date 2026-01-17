@@ -200,6 +200,13 @@ def init_db():
                 """
                 )
 
+                cur.execute(
+                    """
+                    ALTER TABLE records
+                    ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+                    """
+                )
+
                 # records（✅加 face_value）
                 cur.execute(
                     """
@@ -584,13 +591,13 @@ def home(request: Request):
         )
 
     # ✅ 取出該使用者所有分期資料
-    rows = get_all_records_for_user(user["user_id"])
+    rows_raw = get_all_records_for_user(user["user_id"])
+    rows = [row_to_view(r) for r in rows_raw]
 
     paid_sum_map = get_paid_sum_map(user["user_id"])
     for r in rows:
         r["paid_sum"] = paid_sum_map.get(r["id"], r["paid_count"] * r["amount"])
 
-    # ✅ 通知區：今日到期 / 逾期
     today_due_records = [r for r in rows if r["is_due_today"]]
     overdue_records = [r for r in rows if r["is_overdue"]]
     due_today_count = len(today_due_records)
