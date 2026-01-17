@@ -82,6 +82,14 @@
             <a class="btn primary" href="/add-page">＋ 新增資料</a>
             <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
           </div>
+          <div class="card" style="text-align:center;">
+            <div class="seg">
+              <button type="button" class="seg-btn" id="btnToggleCurrent" onclick="toggleSection('currentCard', this)">
+                📌 顯示目前資料
+              </button>
+            </div>
+          </div>
+
 
           
 
@@ -292,6 +300,31 @@
   </div>
 
 <script>
+  // 目前資料：預設隱藏（可改成 true/false）
+  document.addEventListener('DOMContentLoaded', () => {
+    const current = document.getElementById('currentCard');
+    const btn = document.getElementById('btnToggleCurrent');
+    if(current && btn){
+      // 預設先隱藏
+      current.classList.add('is-hidden');
+      btn.classList.remove('active');
+      btn.textContent = '📌 顯示目前資料';
+    }
+  });
+
+  function toggleSection(id, btn){
+    const el = document.getElementById(id);
+    if(!el) return;
+
+    const willShow = el.classList.contains('is-hidden');
+    el.classList.toggle('is-hidden');
+
+    if(btn){
+      btn.classList.toggle('active', willShow);
+      btn.textContent = willShow ? '📌 隱藏目前資料' : '📌 顯示目前資料';
+    }
+  }
+  
   function toggleBulkMode(){
     const card = document.getElementById('currentCard');
     card.classList.toggle('bulk-mode');
