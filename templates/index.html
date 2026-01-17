@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,390 +10,393 @@
   <style>
     /* 通知區：每區最多顯示約 5 筆，超過就捲動 */
     .notice-list {
-      max-height: 210px; /* 約 5 筆 */
+      max-height: 210px;
+      /* 約 5 筆 */
       overflow-y: auto;
       padding-right: 6px;
     }
-    .notice-list li { margin-bottom: 8px; }
+
+    .notice-list li {
+      margin-bottom: 8px;
+    }
 
 
     /* 目前資料：多筆刪除模式 */
-    #bulkBar{ display:none; align-items:center; gap:10px; margin:10px 0; }
-    .bulkBox{ display:none; padding: 10px 8px 0 0; }
-    .bulk-mode #bulkBar{ display:flex; }
-    .bulk-mode .bulkBox{ display:block; }
+    #bulkBar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin: 10px 0;
+    }
 
+    .bulkBox {
+      display: none;
+      padding: 10px 8px 0 0;
+    }
+
+    .bulk-mode #bulkBar {
+      display: flex;
+    }
+
+    .bulk-mode .bulkBox {
+      display: block;
+    }
   </style>
 
 </head>
+
 <body>
   <div class="container">
     <h1>分期記帳</h1>
 
     {% if paid_msg %}
-      <div class="card">
-        <p><b>{{ paid_msg }}</b></p>
-      </div>
+    <div class="card">
+      <p><b>{{ paid_msg }}</b></p>
+    </div>
     {% endif %}
 
     {% if not user %}
-      <div class="card">
-        <h2>登入</h2>
-        <form method="post" action="/login" class="form-grid">
-          <label>帳號
-            <input type="text" name="username" required>
-          </label>
-          <label>密碼
-            <input type="password" name="password" required>
-          </label>
-          <button type="submit" class="btn primary">登入</button>
-        </form>
-      </div>
+    <div class="card">
+      <h2>登入</h2>
+      <form method="post" action="/login" class="form-grid">
+        <label>帳號
+          <input type="text" name="username" required>
+        </label>
+        <label>密碼
+          <input type="password" name="password" required>
+        </label>
+        <button type="submit" class="btn primary">登入</button>
+      </form>
+    </div>
 
-      <div class="card">
-        <h2>註冊</h2>
-        <form method="post" action="/register" class="form-grid">
-          <label>帳號
-            <input type="text" name="username" required>
-          </label>
-          <label>密碼
-            <input type="password" name="password" required>
-          </label>
-          <button type="submit" class="btn primary">註冊並登入</button>
-        </form>
-      </div>
+    <div class="card">
+      <h2>註冊</h2>
+      <form method="post" action="/register" class="form-grid">
+        <label>帳號
+          <input type="text" name="username" required>
+        </label>
+        <label>密碼
+          <input type="password" name="password" required>
+        </label>
+        <button type="submit" class="btn primary">註冊並登入</button>
+      </form>
+    </div>
 
     {% else %}
 
-      <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-        <div>目前登入：<b>{{ user.username }}</b></div>
-        <form method="post" action="/logout" style="margin:0;">
-          <button class="btn">登出</button>
-        </form>
-      </div>
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>目前登入：<b>{{ user.username }}</b></div>
+      <form method="post" action="/logout" style="margin:0;">
+        <button class="btn">登出</button>
+      </form>
+    </div>
 
-      <div class="layout">
+    <div class="layout">
 
-        <!-- 左邊：功能 -->
-        <div class="main">
+      <!-- 左邊：功能 -->
+      <div class="main">
 
-          <!-- ✅ 功能：新增（跳頁） -->
-          <div class="card" style="text-align:center;">
-            <h2>功能</h2>
-            <a class="btn primary" href="/add-page">＋ 新增資料</a>
-            <a class="btn" href="/expense-page" style="margin-left:10px;">＋ 新增開銷</a>
-            <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
+        <!-- ✅ 功能：新增（跳頁） -->
+        <div class="card" style="text-align:center;">
+          <h2>功能</h2>
+          <a class="btn primary" href="/add-page">＋ 新增資料</a>
+          <a class="btn" href="/expense-page" style="margin-left:10px;">＋ 新增開銷</a>
+          <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
+        </div>
+        <div class="card" style="text-align:center;">
+          <div class="seg">
+            <button type="button" class="seg-btn" id="btnToggleCurrent" onclick="toggleSection('currentCard', this)">
+              📌 顯示目前資料
+            </button>
+
+            <button type="button" class="seg-btn" id="btnToggleExpense" onclick="toggleSection('expenseCard', this)">
+              💸 顯示今日開銷
+            </button>
           </div>
-          <div class="card" style="text-align:center;">
-            <div class="seg">
-              <button type="button" class="seg-btn" id="btnToggleCurrent"
-                      onclick="toggleSection('currentCard', this)">
-                📌 顯示目前資料
-              </button>
-
-              <button type="button" class="seg-btn" id="btnToggleExpense"
-                      onclick="toggleSection('expenseCard', this)">
-                💸 顯示今日開銷
-              </button>
-            </div>
-          </div>
+        </div>
 
 
 
-          <!-- ✅ 目前資料 -->
-          <div class="card is-hidden" id="currentCard">
+        <!-- ✅ 目前資料 -->
+        <div class="card is-hidden" id="currentCard">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
             <h2 style="margin:0;">目前資料</h2>
             <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
           </div>
-
           {% if rows|length == 0 %}
-            <p class="muted">目前沒有資料</p>
+          <p class="muted">目前沒有資料</p>
           {% else %}
-           <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
-
+          <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
             <div id="bulkBar">
               <label style="display:flex; align-items:center; gap:6px;">
-                <input type="checkbox" onclick="toggleSelectAll(this)"> 全選
+                <input id="bulkSelectAll" type="checkbox" onclick="toggleSelectAll(this)"> 全選
               </label>
-              <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">確認刪除勾選</button>
+              <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">
+                確認刪除勾選
+              </button>
             </div>
+          </form>
 
-            <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
+          <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
 
-             {% set sorted_rows = rows|sort(attribute='interval_days') %}
-             {% set ns = namespace(last_interval=None) %}
+            {% set sorted_rows = rows|sort(attribute='interval_days') %}
+            {% set ns = namespace(last_interval=None) %}
 
-             {% for r in sorted_rows %}
-               {% if ns.last_interval != r.interval_days %}
-                 {% set ns.last_interval = r.interval_days %}
-                 <div class="meta" style="margin:10px 0 6px; font-weight:700;">
-                   ✅ {{ r.interval_days }} 天收款
-                 </div>
-              {% endif %}
+            {% for r in sorted_rows %}
+            {% if ns.last_interval != r.interval_days %}
+            {% set ns.last_interval = r.interval_days %}
+            <div class="meta" style="margin:10px 0 6px; font-weight:700;">
+              ✅ {{ r.interval_days }} 天收款
+            </div>
+            {% endif %}
 
-              <div class="row">
-               <div class="bulkBox">
-                 <input type="checkbox" name="record_ids" value="{{ r.id }}">
-               </div>
-               <div class="row-main">
-                 <div class="title">{{ r.name }}</div>
-                    <div class="meta">
-                      {% set paid_sum = (r.paid_count * r.amount) %}
-                      {% set face_left = (r.face_value - paid_sum) %}
-                      {% set spend_left = (r.total_amount - paid_sum) %}
-                      {% set periods_left = (r.periods - r.paid_count) %}
+            <div class="row">
+              <div class="bulkBox">
+                <input type="checkbox" name="record_ids" value="{{ r.id }}" form="bulkForm">
+              </div>
+              <div class="row-main">
+                <div class="title">{{ r.name }}</div>
+                <div class="meta">
+                  {% set paid_sum = (r.paid_count * r.amount) %}
+                  {% set face_left = (r.face_value - paid_sum) %}
+                  {% set spend_left = (r.total_amount - paid_sum) %}
+                  {% set periods_left = (r.periods - r.paid_count) %}
 
-                      建立日：{{ r.created_date }}
+                  建立日：{{ r.created_date }}
 
-                      ｜ 票面 {{ r.face_value }}/餘
-                      {% if face_left < 0 %}
-                        <span style="color:#dc2626; font-weight:700;">{{ face_left }}</span>
-                      {% else %}
-                        {{ face_left }}
-                      {% endif %}
+                  ｜ 票面 {{ r.face_value }}/餘
+                  {% if face_left < 0 %} <span style="color:#dc2626; font-weight:700;">{{ face_left }}</span>
+                    {% else %}
+                    {{ face_left }}
+                    {% endif %}
 
-                      ｜ 支出 {{ r.total_amount }}/餘
-                      {% if spend_left < 0 %}
-                        <span style="color:#dc2626; font-weight:700;">{{ spend_left }}</span>
+                    ｜ 支出 {{ r.total_amount }}/餘
+                    {% if spend_left < 0 %} <span style="color:#dc2626; font-weight:700;">{{ spend_left }}</span>
                       {% else %}
                       {{ spend_left }}
                       {% endif %}
 
                       ｜ {{ r.periods }} 期/餘 {{ periods_left if periods_left > 0 else 0 }} 期
                       ｜ 每期 {{ r.amount }}
-                    </div>
-
-
-                    <div class="notice">
-                      週期：每 {{ r.interval_days }} 天一次
-                      {% if r.finished %}
-                        <!-- 已結清不顯示 -->
-                      {% elif r.days_left == 0 %}
-                        ｜ <b>🔔 今天要繳款</b>
-                      {% elif r.days_left > 0 %}
-                        ｜ 還有 <b>{{ r.days_left }}天</b>
-                      {% else %}
-                        ｜ <b>已逾期 {{ -r.days_left }}天</b>
-                      {% endif %}
-                    </div>
-                  </div>
-
-                  <div class="row-actions">
-                    {% if r.finished %}
-                      <p style="color: green; font-weight: bold;">✅ 已結清</p>
-
-                    {% elif paid_id and r.id == paid_id %}
-                      <p style="color: #0a7; font-weight: bold;">✅ 繳款完成</p>
-
-                    {% elif r.is_due_today %}
-                      <!-- 左側卡片不顯示繳款按鈕（只顯示提醒） -->
-                      <p style="color: #f59e0b; font-weight: bold;">🔔 今天要繳款</p>
-
-                    {% elif r.is_overdue %}
-                      <!-- 左側卡片不顯示補繳按鈕（只顯示提醒） -->
-                      <p style="color: red; font-weight: bold;">❗ 未完成繳款</p>
-                      <p style="color: gray; margin: 6px 0 0;">請到右側通知區補繳</p>
-
-                    {% else %}
-                      <p style="color: gray;">尚未到繳款日</p>
-                    {% endif %}
-
-                     {% if not r.finished %}
-                     <form action="/settle/{{ r.id }}" method="post"
-                           style="display:flex; gap:6px; align-items:center;">
-                     <input type="number"
-                            name="amount"
-                            min="1"
-                            placeholder="結清金額"
-                            style="width:90px; padding:6px;"
-                            required>
-                     <button class="btn primary" type="submit">已結清</button>
-                   </form>
-                   {% endif %}
-
-                   <a class="btn" href="/edit/{{ r.id }}">編輯</a>
-
-                   <form method="post" action="/delete/{{ r.id }}"
-                         onsubmit="return confirm('確定要刪除嗎？');">
-                     <button class="btn danger" type="submit">刪除</button>
-                   </form>
-
-                  </div>
                 </div>
-              {% endfor %}
+
+
+                <div class="notice">
+                  週期：每 {{ r.interval_days }} 天一次
+                  {% if r.finished %}
+                  <!-- 已結清不顯示 -->
+                  {% elif r.days_left == 0 %}
+                  ｜ <b>🔔 今天要繳款</b>
+                  {% elif r.days_left > 0 %}
+                  ｜ 還有 <b>{{ r.days_left }}天</b>
+                  {% else %}
+                  ｜ <b>已逾期 {{ -r.days_left }}天</b>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="row-actions">
+                {% if r.finished %}
+                <p style="color: green; font-weight: bold;">✅ 已結清</p>
+
+                {% elif paid_id and r.id == paid_id %}
+                <p style="color: #0a7; font-weight: bold;">✅ 繳款完成</p>
+
+                {% elif r.is_due_today %}
+                <!-- 左側卡片不顯示繳款按鈕（只顯示提醒） -->
+                <p style="color: #f59e0b; font-weight: bold;">🔔 今天要繳款</p>
+
+                {% elif r.is_overdue %}
+                <!-- 左側卡片不顯示補繳按鈕（只顯示提醒） -->
+                <p style="color: red; font-weight: bold;">❗ 未完成繳款</p>
+                <p style="color: gray; margin: 6px 0 0;">請到右側通知區補繳</p>
+
+                {% else %}
+                <p style="color: gray;">尚未到繳款日</p>
+                {% endif %}
+
+                {% if not r.finished %}
+                <form action="/settle/{{ r.id }}" method="post" style="display:flex; gap:6px; align-items:center;">
+                  <input type="number" name="amount" min="1" placeholder="結清金額" style="width:90px; padding:6px;"
+                    required>
+                  <button class="btn primary" type="submit">已結清</button>
+                </form>
+                {% endif %}
+
+                <a class="btn" href="/edit/{{ r.id }}">編輯</a>
+
+                <form method="post" action="/delete/{{ r.id }}" onsubmit="return confirm('確定要刪除嗎？');">
+                  <button class="btn danger" type="submit">刪除</button>
+                </form>
+
+              </div>
             </div>
-           </form>
+            {% endfor %}
+          </div>
+          </form>
           {% endif %}
         </div>
 
-          
 
+
+      </div>
+
+      <!-- 右邊：通知 -->
+      <div class="side">
+
+        <!-- ✅ 今日總收金額 + 歷史按鈕 -->
+        <div class="card">
+          <h2>今日淨收</h2>
+          <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
         </div>
-
-        <!-- 右邊：通知 -->
-        <div class="side">
-
-          <!-- ✅ 今日總收金額 + 歷史按鈕 -->
-          <div class="card">
-            <h2>今日淨收</h2>
-            <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
-</div>
 
         <div class="card is-hidden" id="expenseCard">
           <h2>今日開銷</h2>
           <p style="font-size: 22px; margin: 0;"><b>{{ today_expense_total }}</b></p>
 
           {% if today_expenses|length == 0 %}
-            <p class="muted" style="margin-top:10px;">今天尚未新增開銷</p>
+          <p class="muted" style="margin-top:10px;">今天尚未新增開銷</p>
           {% else %}
-            <ul class="notice-list" style="margin-top:10px;">
-              {% for e in today_expenses %}
-                <li>• {{ e.item }}：{{ e.amount }}</li>
-              {% endfor %}
-            </ul>
+          <ul class="notice-list" style="margin-top:10px;">
+            {% for e in today_expenses %}
+            <li>• {{ e.item }}：{{ e.amount }}</li>
+            {% endfor %}
+          </ul>
           {% endif %}
         </div>
 
 
-          <div class="card">
-            <h2>通知</h2>
+        <div class="card">
+          <h2>通知</h2>
 
-            <h3>今日收款</h3>
-            {% if today_due_records|length == 0 %}
-              <p>今天沒有到期的繳款</p>
-            {% else %}
-              <ul class="notice-list">
-              {% for r in today_due_records %}
-                <li>
-                  🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
-                  <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-                    <button class="btn" type="submit">已繳款</button>
-                  </form>
-                </li>
-              {% endfor %}
-              </ul>
-            {% endif %}
-
-            <h3>明日收款</h3>
-            {% set ns = namespace(has_tomorrow=false) %}
-            <ul class="notice-list">
-            {% for r in rows %}
-              {% if r.days_left == 1 and (r.paid_count < r.periods) %}
-                {% set ns.has_tomorrow = true %}
-                <li>⏳ {{ r.name }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
-              {% endif %}
+          <h3>今日收款</h3>
+          {% if today_due_records|length == 0 %}
+          <p>今天沒有到期的繳款</p>
+          {% else %}
+          <ul class="notice-list">
+            {% for r in today_due_records %}
+            <li>
+              🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
+              <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
+                <button class="btn" type="submit">已繳款</button>
+              </form>
+            </li>
             {% endfor %}
-            </ul>
-            {% if not ns.has_tomorrow %}
-              <p>明天沒有到期的收款</p>
-            {% endif %}
+          </ul>
+          {% endif %}
 
-            <h3>逾期</h3>
-            {% if overdue_records|length == 0 %}
-              <p>目前沒有逾期</p>
-            {% else %}
-              <ul class="notice-list">
-              {% for r in overdue_records %}
-                <li>
-                  {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
-                  {% set delta = -r.days_left %}
-
-                  {# 先算逾期幾期（原始） #}
-                  {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
-
-                  {# 剩餘期數 = 總期數 - 已繳期數（下限 0） #}
-                  {% set remaining = (r.periods - r.paid_count) %}
-                  {% if remaining < 0 %}{% set remaining = 0 %}{% endif %}
-
-                  {# 逾期期數上限：不能超過剩餘期數 #}
-                  {% set overdue_periods = overdue_raw if overdue_raw < remaining else remaining %}
-
-                  ❗ {{ r.name }}（逾期 {{ overdue_periods }} 期）
-                  <form action="/pay/{{ r.id }}" method="post"
-                        style="display:inline-flex; align-items:center; gap:6px;">
-                    (
-                    <input type="number"
-                           name="periods"
-                           min="1"
-                           style="width:60px; padding:4px;"
-                           placeholder="期數"
-                           required>
-                    )
-                    <button class="btn" type="submit">補繳</button>
-                  </form>
-                 </li>
-
-
+          <h3>明日收款</h3>
+          {% set ns = namespace(has_tomorrow=false) %}
+          <ul class="notice-list">
+            {% for r in rows %}
+            {% if r.days_left == 1 and (r.paid_count < r.periods) %} {% set ns.has_tomorrow=true %} <li>⏳ {{ r.name
+              }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
+              {% endif %}
               {% endfor %}
-              </ul>
-            {% endif %}
-          </div>
+          </ul>
+          {% if not ns.has_tomorrow %}
+          <p>明天沒有到期的收款</p>
+          {% endif %}
 
+          <h3>逾期</h3>
+          {% if overdue_records|length == 0 %}
+          <p>目前沒有逾期</p>
+          {% else %}
+          <ul class="notice-list">
+            {% for r in overdue_records %}
+            <li>
+              {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
+              {% set delta = -r.days_left %}
+
+              {# 先算逾期幾期（原始） #}
+              {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
+
+              {# 剩餘期數 = 總期數 - 已繳期數（下限 0） #}
+              {% set remaining = (r.periods - r.paid_count) %}
+              {% if remaining < 0 %}{% set remaining=0 %}{% endif %} {# 逾期期數上限：不能超過剩餘期數 #} {% set
+                overdue_periods=overdue_raw if overdue_raw < remaining else remaining %} ❗ {{ r.name }}（逾期 {{
+                overdue_periods }} 期） <form action="/pay/{{ r.id }}" method="post"
+                style="display:inline-flex; align-items:center; gap:6px;">
+                (
+                <input type="number" name="periods" min="1" style="width:60px; padding:4px;" placeholder="期數" required>
+                )
+                <button class="btn" type="submit">補繳</button>
+                </form>
+            </li>
+
+
+            {% endfor %}
+          </ul>
+          {% endif %}
         </div>
 
-        
       </div>
 
-      <!-- 取消彈跳通知視窗（不再 alert） -->
+
+    </div>
+
+    <!-- 取消彈跳通知視窗（不再 alert） -->
 
     {% endif %}
   </div>
 
 
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
-  initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
-});
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
+      initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
+    });
 
-function initToggle(cardId, btnId, showText, hideText){
-  const el = document.getElementById(cardId);
-  const btn = document.getElementById(btnId);
-  if(!el || !btn) return;
-  const hidden = el.classList.contains('is-hidden');
-  btn.textContent = hidden ? showText : hideText;
-  btn.classList.toggle('active', !hidden);
-}
-
-function toggleSection(id, btn){
-  const el = document.getElementById(id);
-  if(!el) return;
-
-  el.classList.toggle('is-hidden');
-  const hidden = el.classList.contains('is-hidden');
-
-  if(btn){
-    if(id === 'currentCard'){
-      btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-    }else if(id === 'expenseCard'){
-      btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
+    function initToggle(cardId, btnId, showText, hideText) {
+      const el = document.getElementById(cardId);
+      const btn = document.getElementById(btnId);
+      if (!el || !btn) return;
+      const hidden = el.classList.contains('is-hidden');
+      btn.textContent = hidden ? showText : hideText;
+      btn.classList.toggle('active', !hidden);
     }
-    btn.classList.toggle('active', !hidden);
-  }
-}
 
-function toggleBulkMode(){
-    const card = document.getElementById('currentCard');
-    card.classList.toggle('bulk-mode');
-    if(!card.classList.contains('bulk-mode')){
-      document.querySelectorAll('input[name="record_ids"]').forEach(cb=>cb.checked=false);
-      const all = document.getElementById('bulkSelectAll');
-      if(all) all.checked=false;
+    function toggleSection(id, btn) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.classList.toggle('is-hidden');
+      const hidden = el.classList.contains('is-hidden');
+
+      if (btn) {
+        if (id === 'currentCard') {
+          btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+        } else if (id === 'expenseCard') {
+          btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
+        }
+        btn.classList.toggle('active', !hidden);
+      }
     }
-  }
-  function toggleSelectAll(master){
-    document.querySelectorAll('input[name="record_ids"]').forEach(cb=>cb.checked=master.checked);
-  }
-  function confirmBulkDelete(){
-    const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
-    if(n===0){ alert('請先勾選要刪除的資料'); return false; }
-    return confirm(`確定要刪除 ${n} 筆資料嗎？`);
-  }
-</script>
+
+    function toggleBulkMode() {
+      const card = document.getElementById('currentCard');
+      card.classList.toggle('bulk-mode');
+      if (!card.classList.contains('bulk-mode')) {
+        document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = false);
+        const all = document.getElementById('bulkSelectAll');
+        if (all) all.checked = false;
+      }
+    }
+    function toggleSelectAll(master) {
+      document.querySelectorAll('input[name="record_ids"]').forEach(cb => {
+        cb.checked = master.checked;
+      });
+    }
+    function confirmBulkDelete() {
+      const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
+      if (n === 0) { alert('請先勾選要刪除的資料'); return false; }
+      return confirm(`確定要刪除 ${n} 筆資料嗎？`);
+    }
+  </script>
 
 
 
 
 </body>
+
 </html>
