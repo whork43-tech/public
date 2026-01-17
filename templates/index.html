@@ -80,12 +80,19 @@
           <div class="card" style="text-align:center;">
             <h2>功能</h2>
             <a class="btn primary" href="/add-page">＋ 新增資料</a>
+            <a class="btn" href="/expense-page" style="margin-left:10px;">＋ 新增開銷</a>
             <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
           </div>
           <div class="card" style="text-align:center;">
             <div class="seg">
-              <button type="button" class="seg-btn" id="btnToggleCurrent" onclick="toggleSection('currentCard', this)">
+              <button type="button" class="seg-btn" id="btnToggleCurrent"
+                      onclick="toggleSection('currentCard', this)">
                 📌 顯示目前資料
+              </button>
+
+              <button type="button" class="seg-btn" id="btnToggleExpense"
+                      onclick="toggleSection('expenseCard', this)">
+                💸 顯示今日開銷
               </button>
             </div>
           </div>
@@ -217,6 +224,22 @@
             <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
 </div>
 
+        <div class="card is-hidden" id="expenseCard">
+          <h2>今日開銷</h2>
+          <p style="font-size: 22px; margin: 0;"><b>{{ today_expense_total }}</b></p>
+
+          {% if today_expenses|length == 0 %}
+            <p class="muted" style="margin-top:10px;">今天尚未新增開銷</p>
+          {% else %}
+            <ul class="notice-list" style="margin-top:10px;">
+              {% for e in today_expenses %}
+                <li>• {{ e.item }}：{{ e.amount }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+
+
           <div class="card">
             <h2>通知</h2>
 
@@ -303,15 +326,20 @@
 
 
 <script>
+  <script>
   document.addEventListener('DOMContentLoaded', () => {
-    const current = document.getElementById('currentCard');
-    const btn = document.getElementById('btnToggleCurrent');
-    if(!current || !btn) return;
-
-    const hidden = current.classList.contains('is-hidden');
-    btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-    btn.classList.toggle('active', !hidden);
+    initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
+    initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
   });
+
+  function initToggle(cardId, btnId, showText, hideText){
+    const el = document.getElementById(cardId);
+    const btn = document.getElementById(btnId);
+    if(!el || !btn) return;
+    const hidden = el.classList.contains('is-hidden');
+    btn.textContent = hidden ? showText : hideText;
+    btn.classList.toggle('active', !hidden);
+  }
 
   function toggleSection(id, btn){
     const el = document.getElementById(id);
@@ -321,7 +349,12 @@
     const hidden = el.classList.contains('is-hidden');
 
     if(btn){
-      btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+      // 依 id 決定按鈕文案
+      if(id === 'currentCard'){
+        btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+      }else if(id === 'expenseCard'){
+        btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
+      }
       btn.classList.toggle('active', !hidden);
     }
   }

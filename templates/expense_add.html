@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>新增開銷</title>
+  <link rel="stylesheet" href="/static/style.css?v=1002">
+</head>
+<body>
+  <div class="container">
+    <h1>新增開銷</h1>
+
+    <div class="card">
+      <form method="post" action="/expense/add" class="form-grid">
+        <label>項目
+          <input type="text" name="item" required placeholder="例如：午餐 / 油錢 / 材料費">
+        </label>
+
+        <label>金額
+          <input type="number" name="amount" required min="1" placeholder="例如：150">
+        </label>
+
+        <div style="grid-column: 1 / -1; display:flex; gap:10px;">
+          <button type="submit" class="btn primary">新增開銷</button>
+          <a class="btn" href="/">返回首頁</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
