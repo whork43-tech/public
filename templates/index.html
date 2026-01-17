@@ -93,7 +93,7 @@
 
 
           <!-- ✅ 目前資料 -->
-          <div class="card" id="currentCard">
+          <div class="card is-hidden" id="currentCard">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
             <h2 style="margin:0;">目前資料</h2>
             <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
@@ -301,36 +301,34 @@
     {% endif %}
   </div>
 
+
 <script>
-  // 目前資料：預設隱藏（可改成 true/false）
   document.addEventListener('DOMContentLoaded', () => {
     const current = document.getElementById('currentCard');
     const btn = document.getElementById('btnToggleCurrent');
-    if(current && btn){
-      // 預設先隱藏
-      current.classList.add('is-hidden');
-      btn.classList.remove('active');
-      btn.textContent = '📌 顯示目前資料';
-    }
+    if(!current || !btn) return;
+
+    const hidden = current.classList.contains('is-hidden');
+    btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+    btn.classList.toggle('active', !hidden);
   });
 
   function toggleSection(id, btn){
     const el = document.getElementById(id);
     if(!el) return;
 
-    const willShow = el.classList.contains('is-hidden');
     el.classList.toggle('is-hidden');
+    const hidden = el.classList.contains('is-hidden');
 
     if(btn){
-      btn.classList.toggle('active', willShow);
-      btn.textContent = willShow ? '📌 隱藏目前資料' : '📌 顯示目前資料';
+      btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+      btn.classList.toggle('active', !hidden);
     }
   }
 
   function toggleBulkMode(){
     const card = document.getElementById('currentCard');
     card.classList.toggle('bulk-mode');
-    // 關閉時清空勾選
     if(!card.classList.contains('bulk-mode')){
       document.querySelectorAll('input[name="record_ids"]').forEach(cb=>cb.checked=false);
       const all = document.getElementById('bulkSelectAll');
@@ -347,30 +345,6 @@
   }
 </script>
 
-<script>
-  // 頁面載入時，依照目前資料是否隱藏，更新按鈕文字
-  document.addEventListener('DOMContentLoaded', () => {
-    const current = document.getElementById('currentCard');
-    const btn = document.getElementById('btnToggleCurrent');
-    if(!current || !btn) return;
-
-    const hidden = current.classList.contains('is-hidden');
-    btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-    btn.classList.toggle('active', !hidden);
-  });
-
-  // 點按鈕切換顯示 / 隱藏
-  function toggleSection(id, btn){
-    const el = document.getElementById(id);
-    if(!el) return;
-
-    el.classList.toggle('is-hidden');
-    const hidden = el.classList.contains('is-hidden');
-
-    btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-    btn.classList.toggle('active', !hidden);
-  }
-</script>
 
 
 </body>
