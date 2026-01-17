@@ -176,7 +176,7 @@ def init_db():
                 );
                 """)
 
-             # 4 expenses（今日開銷）※一定要在 if / else 外面
+                         # 4 expenses（今日開銷）※一定要在 if / else 外面
             if IS_SQLITE:
                 cur.execute("""
                 CREATE TABLE IF NOT EXISTS expenses (
@@ -406,12 +406,52 @@ def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(f"""
-                SELECT id, paid_at, record_id, record_name, amount
-                FROM payments
-                WHERE user_id = {PH}
-                ORDER BY record_id ASC, paid_at ASC, id ASC
+                SELECT p.id, p.paid_at, p.record_id, r.name, p.amount
+                FROM payments p
+                JOIN records r ON r.id = p.record_id
+                WHERE p.user_id = {PH}
+                ORDER BY p.record_id ASC, p.paid_at ASC, p.id ASC
             """, (user_id,))
             rows = cur.fetchall()
+
+    seq = {}
+    enriched = []
+
+    for r in rows:
+        pid = r["id"] if isinstance(r, sqlite3.Row) else r[0]
+        paid_at = r["paid_at"] if isinstance(r, sqlite3.Row) else r[1]
+        record_id = r["record_id"] if isinstance(r, sqlite3.Row) else r[2]
+        record_name = r["name"] if isinstance(r, sqlite3.Row) else r[3]
+        amount = r["amount"] if isinstance(r, sqlite3.Row) else r[4]
+
+        seq[record_id] = seq.get(record_id, 0) + 1
+        period_no = seq[record_id]
+
+        paid_at_str = paid_at if isinstance(paid_at, str) else paid_at.isoformat()
+
+        enriched.append({
+            "id": int(pid),
+            "date": paid_at_str,
+            "name": record_name,
+            "amount": int(amount),
+            "period_no": int(period_no),
+        })
+
+    by_date = {}
+    for it in enriched:
+        d = it["date"]
+        by_date.setdefault(d, {"date": d, "total": 0, "payments": []})
+        by_date[d]["total"] += it["amount"]
+        by_date[d]["payments"].append({
+            "id": it["id"],
+            "name": it["name"],
+            "amount": it["amount"],
+            "period_no": it["period_no"],
+        })
+
+    return sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
+
+
 
     # 計算每個 record 的第幾期
     seq = {}  # record_id -> count
@@ -825,10 +865,13 @@ def pay_record(request: Request, record_id: int, periods: int = Form(1)):
 
             # ✅ 寫入 n 筆 payments
             for _ in range(n):
-                cur.execute(f"""
-                    INSERT INTO payments (paid_at, amount, record_id, user_id, record_name)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
-                """, (taipei_today_str(), int(r["amount"]), int(r["id"]), int(user["user_id"]), r["name"]))
+                (cur.execute(
+                    f"""
+                    INSERT INTO payments (paid_at, amount, record_id, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH})
+                    """,
+                    (taipei_today_str(), int(r["amount"]), int(r["id"]), int(user["user_id"]))
+              ))
 
 
             # ✅ 更新 records：paid_count + n
@@ -845,6 +888,81 @@ def pay_record(request: Request, record_id: int, periods: int = Form(1)):
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    try:
+        amount = int(amount)
+    except Exception:
+        amount = 0
+    if amount <= 0:
+        return RedirectResponse("/", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 寫一筆 payments
+            cur.execute(
+                f"""
+                INSERT INTO payments (paid_at, amount, record_id, user_id)
+                VALUES ({PH}, {PH}, {PH}, {PH})
+                """,
+                (today_str(), amount, record_id, user["user_id"])
+            )
+
+            # 直接設為完成
+            cur.execute(
+                f"""
+                UPDATE records
+                SET paid_count = periods,
+                    last_paid_day = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+                """,
+                (999999, record_id, user["user_id"])
+            )
+
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/settle/{record_id}")
+def settle_record(request: Request, record_id: int, amount: int = Form(...)):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    if amount <= 0:
+        return RedirectResponse("/", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 寫一筆 payments（結清）
+            cur.execute(
+                f"""
+                INSERT INTO payments (paid_at, amount, record_id, user_id)
+                VALUES ({PH}, {PH}, {PH}, {PH})
+                """,
+                (today_str(), amount, record_id, user["user_id"])
+            )
+
+            # 直接把 records 標記為完成
+            cur.execute(
+                f"""
+                UPDATE records
+                SET paid_count = periods,
+                    last_paid_day = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+                """,
+                (999999, record_id, user["user_id"])
+            )
+
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
 
 @app.post("/delete-multiple")
 def delete_multiple(request: Request, record_ids: List[int] = Form([])):
@@ -879,13 +997,13 @@ def delete_record(request: Request, record_id: int):
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            # ✅ 先刪該 record 的 payments（避免外鍵限制）
+            # 1️⃣ 刪 payments
             cur.execute(
                 f"DELETE FROM payments WHERE record_id = {PH} AND user_id = {PH}",
                 (record_id, user["user_id"])
             )
 
-            # ✅ 再刪 record 本身
+            # 2️⃣ 刪 records
             cur.execute(
                 f"DELETE FROM records WHERE id = {PH} AND user_id = {PH}",
                 (record_id, user["user_id"])
@@ -894,6 +1012,7 @@ def delete_record(request: Request, record_id: int):
         conn.commit()
 
     return RedirectResponse("/", status_code=303)
+
 
 
 
