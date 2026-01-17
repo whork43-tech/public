@@ -228,3 +228,26 @@ h3{ margin: 12px 0 8px; font-size: 15px; color: #222; }
     grid-row: auto;
   }
 }
+/* ===== 功能下方：選項切換 ===== */
+.seg{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+}
+
+.seg-btn{
+  border: 1px solid #ddd;
+  background: #fff;
+  padding: 9px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.seg-btn.active{
+  border-color:#2b6cb0;
+  background:#2b6cb0;
+  color:#fff;
+}
+
+/* 預設隱藏區塊（由 JS 控制顯示） */
+.is-hidden{ display:none !important; }
