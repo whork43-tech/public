@@ -157,6 +157,14 @@ def init_db():
                 """
                 )
 
+                # ✅ 補 records.is_deleted（給舊資料庫用）
+                cur.execute(
+                    """
+                    ALTER TABLE records
+                    ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+                    """
+                )
+
                 # 3 payments（一定最後）
                 cur.execute(
                     """
