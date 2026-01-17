@@ -177,29 +177,30 @@ def init_db():
                 """)
 
                 # 4 expenses（今日開銷）
+                if IS_SQLITE:
+                    cur.execute("""
+                    CREATE TABLE IF NOT EXISTS expenses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        spent_at DATE NOT NULL,
+                        item TEXT NOT NULL,
+                        amount INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+                    """)
+                else:
+                    cur.execute("""
+                    CREATE TABLE IF NOT EXISTS expenses (
+                        id SERIAL PRIMARY KEY,
+                        spent_at DATE NOT NULL,
+                        item TEXT NOT NULL,
+                        amount INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL
+                        REFERENCES users(id)
+                        ON DELETE CASCADE
+                    );
+                    """)
 
-                cur.execute("""
-                CREATE TABLE IF NOT EXISTS expenses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    spent_at DATE NOT NULL,
-                    item TEXT NOT NULL,
-                    amount INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-                );
-                """)
-            else:
-                cur.execute("""
-                CREATE TABLE IF NOT EXISTS expenses (
-                    id SERIAL PRIMARY KEY,
-                    spent_at DATE NOT NULL,
-                    item TEXT NOT NULL,
-                    amount INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL
-                    REFERENCES users(id)
-                    ON DELETE CASCADE
-                );
-                """)
 
 
         conn.commit()
@@ -475,11 +476,11 @@ def home(request: Request):
     paid_id = int(paid_id) if paid_id and paid_id.isdigit() else None
 
     if not user:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "user": None, "paid_msg": paid_msg, "today_expense_total": today_expense_total,
-            "today_expenses": today_expenses,}
-        )
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "user": None, "paid_msg": paid_msg}
+    )
+
 
     # ✅ 取出該使用者所有分期資料
     rows = get_all_records_for_user(user["user_id"])
@@ -507,6 +508,8 @@ def home(request: Request):
             "overdue_records": overdue_records,
             "due_today_count": due_today_count,
             "today_total": today_total,
+            "today_expense_total": today_expense_total,
+            "today_expenses": today_expenses,
         }
     )
 
