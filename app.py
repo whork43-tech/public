@@ -700,30 +700,6 @@ def admin_users(request: Request):
     )
 
 
-@app.post("/history/delete-multiple")
-def delete_payments_multiple(request: Request, payment_ids: List[int] = Form([])):
-    init_db()
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-
-    if not payment_ids:
-        return RedirectResponse("/history", status_code=303)
-
-    placeholders = ",".join([PH] * len(payment_ids))
-    params = [user["user_id"], *payment_ids]
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"DELETE FROM payments WHERE user_id = {PH} AND id IN ({placeholders})",
-                params,
-            )
-        conn.commit()
-
-    return RedirectResponse("/history", status_code=303)
-
-
 @app.post("/history/delete")
 def delete_payment(request: Request, payment_id: int = Form(...)):
     init_db()
@@ -806,7 +782,7 @@ def ping():
 def pay_record(
     request: Request,
     record_id: int,
-    periods: str = Form(1),  # 右邊逾期補繳會傳 periods；今日已繳款沒傳就預設 1
+    periods: str = Form("1"),  # 右邊逾期補繳會傳 periods；今日已繳款沒傳就預設 1
 ):
     init_db()
     user = require_login(request)
@@ -921,36 +897,37 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
     return RedirectResponse("/", status_code=303)
 
 
-@app.post("/delete-multiple")
-def delete_multiple(request: Request, record_ids: List[str] = Form([])):
-    user = require_login(request)
+@app.post("/history/delete-multiple")
+def delete_payments_multiple(request: Request, payment_ids: list[str] = Form([])):
+    init_db()
+    user = get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
 
-    # ✅【就是這裡】轉成 int，過濾不合法的值
+    # ✅ 轉 int（避免 FastAPI 解析 list[int] 時炸）
     _ids = []
-    for x in record_ids or []:
+    for x in payment_ids or []:
         try:
             _ids.append(int(x))
         except Exception:
             pass
-    record_ids = _ids
+    payment_ids = _ids
 
-    if not record_ids:
-        return RedirectResponse("/", status_code=303)
+    if not payment_ids:
+        return RedirectResponse("/history", status_code=303)
 
-    placeholders = ",".join([PH] * len(record_ids))
-    params = [user["user_id"], *record_ids]
+    placeholders = ",".join([PH] * len(payment_ids))
+    params = [user["user_id"], *payment_ids]
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
-                f"DELETE FROM records WHERE user_id = {PH} AND id IN ({placeholders})",
+                f"DELETE FROM payments WHERE user_id = {PH} AND id IN ({placeholders})",
                 params,
             )
         conn.commit()
 
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/history", status_code=303)
 
 
 @app.post("/delete/{record_id}")
