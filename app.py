@@ -80,6 +80,29 @@ def get_conn():
     return psycopg.connect(DATABASE_URL, row_factory=tuple_row)
 
 
+def get_paid_sum_map(user_id: int) -> dict[int, int]:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT record_id, COALESCE(SUM(amount), 0) AS s
+                FROM payments
+                WHERE user_id = {PH}
+                GROUP BY record_id
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+
+    out = {}
+    for r in rows:
+        # sqlite Row vs postgres tuple
+        record_id = r["record_id"] if isinstance(r, sqlite3.Row) else r[0]
+        s = r["s"] if isinstance(r, sqlite3.Row) else r[1]
+        out[int(record_id)] = int(s or 0)
+    return out
+
+
 @contextmanager
 def get_cursor(conn):
     cur = conn.cursor()
@@ -298,7 +321,8 @@ def require_admin(request: Request):
 # Business logic
 # ======================
 def calc_current_day(created_date_obj: date) -> int:
-    return (date.today() - created_date_obj).days
+    today = date.fromisoformat(taipei_today_str())
+    return (today - created_date_obj).days
 
 
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
@@ -526,6 +550,10 @@ def home(request: Request):
 
     # ✅ 取出該使用者所有分期資料
     rows = get_all_records_for_user(user["user_id"])
+
+    paid_sum_map = get_paid_sum_map(user["user_id"])
+    for r in rows:
+        r["paid_sum"] = paid_sum_map.get(r["id"], r["paid_count"] * r["amount"])
 
     # ✅ 通知區：今日到期 / 逾期
     today_due_records = [r for r in rows if r["is_due_today"]]
