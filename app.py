@@ -394,19 +394,37 @@ def row_to_view(row):
 def get_all_records_for_user(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(
-                f"""
-                SELECT id, created_date, name, face_value, total_amount, periods, amount,
-                       interval_days, paid_count, last_paid_day, user_id
-                FROM records
-                WHERE user_id = {PH}
-                  AND is_deleted = FALSE
-                ORDER BY id DESC
-            """,
-                (user_id,),
-            )
-            rows = cur.fetchall()
-            return [row_to_view(r) for r in rows]
+            try:
+                # ✅ 新版：有 is_deleted 就用
+                cur.execute(
+                    f"""
+                    SELECT id, created_date, name, face_value, total_amount, periods, amount,
+                           interval_days, paid_count, last_paid_day, user_id
+                    FROM records
+                    WHERE user_id = {PH}
+                      AND is_deleted = FALSE
+                    ORDER BY id DESC
+                    """,
+                    (user_id,),
+                )
+            except Exception as e:
+                # ✅ 兼容舊 DB：沒有 is_deleted 時，不要讓整站掛掉
+                # 只針對 "UndefinedColumn" 退回舊查詢
+                if "UndefinedColumn" not in str(type(e)) and "is_deleted" not in str(e):
+                    raise
+
+                cur.execute(
+                    f"""
+                    SELECT id, created_date, name, face_value, total_amount, periods, amount,
+                           interval_days, paid_count, last_paid_day, user_id
+                    FROM records
+                    WHERE user_id = {PH}
+                    ORDER BY id DESC
+                    """,
+                    (user_id,),
+                )
+
+            return cur.fetchall()
 
 
 def get_record_for_user(rid: int, user_id: int):
