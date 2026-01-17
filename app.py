@@ -972,6 +972,42 @@ def delete_record(request: Request, record_id: int):
     return RedirectResponse("/", status_code=303)
 
 
+@app.post("/delete-multiple")
+def delete_multiple(request: Request, record_ids: list[str] = Form([])):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    ids: list[int] = []
+    for x in record_ids or []:
+        try:
+            ids.append(int(x))
+        except Exception:
+            pass
+
+    if not ids:
+        return RedirectResponse("/", status_code=303)
+
+    placeholders = ",".join([PH] * len(ids))
+    params = [user["user_id"], *ids]
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 如果你的 payments 有 ON DELETE CASCADE，這段可以留著或不留都行
+            cur.execute(
+                f"DELETE FROM payments WHERE user_id = {PH} AND record_id IN ({placeholders})",
+                params,
+            )
+            cur.execute(
+                f"DELETE FROM records WHERE user_id = {PH} AND id IN ({placeholders})",
+                params,
+            )
+        conn.commit()
+
+    return RedirectResponse("/", status_code=303)
+
+
 @app.get("/edit/{record_id}")
 def edit_page(request: Request, record_id: int):
     init_db()
