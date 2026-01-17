@@ -802,6 +802,80 @@ def ping():
     return {"status": "ok"}
 
 
+@app.post("/pay/{record_id}")
+def pay_record(
+    request: Request,
+    record_id: int,
+    periods: int = Form(1),  # 右邊逾期補繳會傳 periods；今日已繳款沒傳就預設 1
+):
+    init_db()
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    # 防呆
+    try:
+        periods = int(periods)
+    except Exception:
+        periods = 1
+    if periods <= 0:
+        periods = 1
+
+    # 取這筆資料（確保是自己的）
+    r = get_record_for_user(record_id, user["user_id"])
+    if not r:
+        return RedirectResponse("/?paid_msg=" + quote("找不到資料"), status_code=303)
+
+    # 已結清就不處理
+    if r["paid_count"] >= r["periods"]:
+        return RedirectResponse("/?paid_msg=" + quote("此筆已結清"), status_code=303)
+
+    remaining = r["periods"] - r["paid_count"]
+    if remaining < 0:
+        remaining = 0
+
+    # 不能補繳超過剩餘期數
+    if periods > remaining:
+        periods = remaining
+    if periods <= 0:
+        return RedirectResponse("/?paid_msg=" + quote("沒有可繳期數"), status_code=303)
+
+    pay_amount = periods * r["amount"]
+
+    # 更新 last_paid_day：用「目前已過天數」做基準，避免亂跳
+    created_date_obj = date.fromisoformat(r["created_date"])
+    current_day = calc_current_day(created_date_obj)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 寫 payments（記一筆：今天收款）
+            cur.execute(
+                f"""
+                INSERT INTO payments (paid_at, amount, record_id, user_id)
+                VALUES ({PH}, {PH}, {PH}, {PH})
+                """,
+                (today_str(), pay_amount, record_id, user["user_id"]),
+            )
+
+            # 更新 records 的已繳期數 & 最後繳款日
+            cur.execute(
+                f"""
+                UPDATE records
+                SET paid_count = paid_count + {PH},
+                    last_paid_day = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+                """,
+                (periods, current_day, record_id, user["user_id"]),
+            )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/?paid_id=" + quote(str(record_id)) + "&paid_msg=" + quote("繳款完成"),
+        status_code=303,
+    )
+
+
 @app.post("/settle/{record_id}")
 def settle_record(request: Request, record_id: int, amount: int = Form(...)):
     init_db()
@@ -811,6 +885,14 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
 
     if amount <= 0:
         return RedirectResponse("/", status_code=303)
+
+    # ✅ 先拿到這筆資料，算 current_day（放在 DB 操作前也可以）
+    r = get_record_for_user(record_id, user["user_id"])
+    if not r:
+        return RedirectResponse("/", status_code=303)
+
+    created_date_obj = date.fromisoformat(r["created_date"])
+    current_day = calc_current_day(created_date_obj)
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -823,7 +905,7 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
                 (today_str(), amount, record_id, user["user_id"]),
             )
 
-            # 直接把 records 標記為完成
+            # ✅ 標記完成 + last_paid_day 用 current_day
             cur.execute(
                 f"""
                 UPDATE records
@@ -831,7 +913,7 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
                     last_paid_day = {PH}
                 WHERE id = {PH} AND user_id = {PH}
                 """,
-                (999999, record_id, user["user_id"]),
+                (current_day, record_id, user["user_id"]),
             )
 
         conn.commit()
