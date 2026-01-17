@@ -408,11 +408,15 @@ def get_all_records_for_user(user_id: int):
                     (user_id,),
                 )
             except Exception as e:
-                # ✅ 兼容舊 DB：沒有 is_deleted 時，不要讓整站掛掉
-                # 只針對 "UndefinedColumn" 退回舊查詢
-                if "UndefinedColumn" not in str(type(e)) and "is_deleted" not in str(e):
+                # 只針對沒有 is_deleted 欄位時降級
+                if "is_deleted" not in str(e):
                     raise
 
+                # ✅ 关键：Postgres 第一個 SQL 失敗後，必須 rollback 才能繼續下 SQL
+                if not IS_SQLITE:
+                    conn.rollback()
+
+                # ✅ 舊版：沒有 is_deleted 就退回原本查詢（不影響既有功能）
                 cur.execute(
                     f"""
                     SELECT id, created_date, name, face_value, total_amount, periods, amount,
