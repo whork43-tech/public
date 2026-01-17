@@ -96,9 +96,13 @@ def get_paid_sum_map(user_id: int) -> dict[int, int]:
 
     out = {}
     for r in rows:
-        # sqlite Row vs postgres tuple
         record_id = r["record_id"] if isinstance(r, sqlite3.Row) else r[0]
         s = r["s"] if isinstance(r, sqlite3.Row) else r[1]
+
+        # ✅ 防呆：跳過 record_id 為 NULL 的壞資料
+        if record_id is None:
+            continue
+
         out[int(record_id)] = int(s or 0)
     return out
 
