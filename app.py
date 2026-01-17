@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 from psycopg.rows import tuple_row
+import traceback
+from fastapi.responses import PlainTextResponse
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
@@ -28,6 +30,20 @@ load_dotenv()
 # App
 # ======================
 app = FastAPI(title="分期記帳")
+
+
+@app.exception_handler(Exception)
+async def all_exception_handler(request: Request, exc: Exception):
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+
+    print("\n=== UNHANDLED ERROR ===")
+    print(f"{request.method} {request.url}")
+    print(tb)
+    print("=== END ERROR ===\n")
+
+    return PlainTextResponse(tb, status_code=500)
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
