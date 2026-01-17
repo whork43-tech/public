@@ -198,11 +198,26 @@
                       <p style="color: gray;">尚未到繳款日</p>
                     {% endif %}
 
-                    <a class="btn" href="/edit/{{ r.id }}">編輯</a>
+                     {% if not r.finished %}
+                     <form action="/settle/{{ r.id }}" method="post"
+                           style="display:flex; gap:6px; align-items:center;">
+                     <input type="number"
+                            name="amount"
+                            min="1"
+                            placeholder="結清金額"
+                            style="width:90px; padding:6px;"
+                            required>
+                     <button class="btn primary" type="submit">已結清</button>
+                   </form>
+                   {% endif %}
 
-                    <form method="post" action="/delete/{{ r.id }}" onsubmit="return confirm('確定要刪除嗎？');">
-                      <button class="btn danger" type="submit">刪除</button>
-                    </form>
+                   <a class="btn" href="/edit/{{ r.id }}">編輯</a>
+
+                   <form method="post" action="/delete/{{ r.id }}"
+                         onsubmit="return confirm('確定要刪除嗎？');">
+                     <button class="btn danger" type="submit">刪除</button>
+                   </form>
+
                   </div>
                 </div>
               {% endfor %}
