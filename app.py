@@ -505,6 +505,47 @@ def get_today_expense_total_for_user(user_id: int) -> int:
             return int(v[0]) if v and v[0] is not None else 0
 
 
+def get_expense_map_for_user(user_id: int):
+    """
+    回傳 dict:
+    {
+      "YYYY-MM-DD": {"date": "...", "total": 123, "expenses": [{"item": "...", "amount": 50}, ...]},
+      ...
+    }
+    """
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT spent_at, item, amount
+                FROM expenses
+                WHERE user_id = {PH}
+                ORDER BY spent_at DESC, id DESC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+
+    mp = {}
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            spent_at = r["spent_at"]
+            item = r["item"]
+            amount = r["amount"]
+        else:
+            spent_at, item, amount = r[0], r[1], r[2]
+
+        d = spent_at if isinstance(spent_at, str) else spent_at.isoformat()
+
+        if d not in mp:
+            mp[d] = {"date": d, "total": 0, "expenses": []}
+
+        mp[d]["total"] += int(amount or 0)
+        mp[d]["expenses"].append({"item": item, "amount": int(amount or 0)})
+
+    return mp
+
+
 def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -790,7 +831,7 @@ def history(request: Request):
 
     init_db()
     groups = get_history_grouped(user["user_id"])
-    expense_groups = get_expense_history_grouped(user["user_id"])
+    expense_map = get_expense_map_for_user(user["user_id"])
 
     return templates.TemplateResponse(
         "history.html",
@@ -798,7 +839,7 @@ def history(request: Request):
             "request": request,
             "user": user,
             "groups": groups,
-            "expense_groups": expense_groups,
+            "expense_map": expense_map,
         },
     )
 
