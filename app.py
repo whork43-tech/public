@@ -997,6 +997,46 @@ def expense_edit_page(request: Request, expense_id: int):
     )
 
 
+@app.post("/expense/delete-multiple")
+def delete_expenses_multiple(
+    request: Request,
+    expense_ids: list[str] = Form([]),
+):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    init_db()
+
+    # 轉成 int，避免亂值
+    ids: list[int] = []
+    for x in expense_ids or []:
+        try:
+            ids.append(int(x))
+        except Exception:
+            pass
+
+    if not ids:
+        return RedirectResponse("/", status_code=303)
+
+    placeholders = ",".join([PH] * len(ids))
+    params = [user["user_id"], *ids]
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                DELETE FROM expenses
+                WHERE user_id = {PH}
+                  AND id IN ({placeholders})
+                """,
+                params,
+            )
+        conn.commit()
+
+    return RedirectResponse("/?paid_msg=已刪除開銷", status_code=303)
+
+
 @app.post("/expense/edit/{expense_id}")
 def expense_edit_save(
     request: Request,
