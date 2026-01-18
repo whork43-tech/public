@@ -1,11 +1,13 @@
 <!doctype html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>後台 - 帳號列表</title>
   <link rel="stylesheet" href="/static/style1.css">
 </head>
+
 <body>
   <div class="layout" style="grid-template-columns: 1fr;">
     <div class="card">
@@ -20,6 +22,8 @@
             <tr>
               <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">ID</th>
               <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">帳號</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">開通時間</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -27,16 +31,31 @@
             <tr>
               <td style="padding:8px; border-bottom:1px solid #f2f2f2;">{{ u.id }}</td>
               <td style="padding:8px; border-bottom:1px solid #f2f2f2;">{{ u.username }}</td>
+              <td style="padding:8px; border-bottom:1px solid #f2f2f2;">
+                {% if u.activated_at %}
+                {{ u.activated_at }}
+                {% else %}
+                <span class="muted">未開通</span>
+                {% endif %}
+              </td>
+              <td style="padding:8px; border-bottom:1px solid #f2f2f2;">
+                <form method="post" action="/admin/users/activate"
+                  style="display:flex; gap:8px; align-items:center; margin:0;">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <input type="text" name="activated_at" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM"
+                    value="{{ u.activated_at or '' }}" style="width:190px;">
+                  <button class="btn" type="submit">設定</button>
+                </form>
+              </td>
             </tr>
-            {% endfor %}
-          </tbody>
-        </table>
 
-        {% if users|length == 0 %}
-          <p class="muted" style="margin-top:12px;">目前沒有帳號</p>
-        {% endif %}
+
+            {% if users|length == 0 %}
+            <p class="muted" style="margin-top:12px;">目前沒有帳號</p>
+            {% endif %}
       </div>
     </div>
   </div>
 </body>
+
 </html>
