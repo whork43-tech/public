@@ -281,136 +281,135 @@
               {% endfor %}
             </ul>
           </form>
-
-
-          <div class="card">
-            <h2>通知</h2>
-
-            <h3>今日收款</h3>
-            {% if today_due_records|length == 0 %}
-            <p>今天沒有到期的繳款</p>
-            {% else %}
-            <ul class="notice-list">
-              {% for r in today_due_records %}
-              <li>
-                🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
-                <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-                  <button class="btn" type="submit">已繳款</button>
-                </form>
-              </li>
-              {% endfor %}
-            </ul>
-            {% endif %}
-
-            <h3>明日收款</h3>
-            {% set ns = namespace(has_tomorrow=false) %}
-            <ul class="notice-list">
-              {% for r in rows %}
-              {% if r.days_left == 1 and (r.paid_count < r.periods) %} {% set ns.has_tomorrow=true %} <li>⏳ {{ r.name
-                }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
-                {% endif %}
-                {% endfor %}
-            </ul>
-            {% if not ns.has_tomorrow %}
-            <p>明天沒有到期的收款</p>
-            {% endif %}
-
-            <h3>逾期</h3>
-            {% if overdue_records|length == 0 %}
-            <p>目前沒有逾期</p>
-            {% else %}
-            <ul class="notice-list">
-              {% for r in overdue_records %}
-              <li>
-                {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
-                {% set delta = -r.days_left %}
-
-                {# 先算逾期幾期（原始） #}
-                {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
-
-                {# 剩餘期數 = 總期數 - 已繳期數（下限 0） #}
-                {% set remaining = (r.periods - r.paid_count) %}
-                {% if remaining < 0 %}{% set remaining=0 %}{% endif %} {# 逾期期數上限：不能超過剩餘期數 #} {% set
-                  overdue_periods=overdue_raw if overdue_raw < remaining else remaining %} ❗ {{ r.name }}（逾期 {{
-                  overdue_periods }} 期） <form action="/pay/{{ r.id }}" method="post"
-                  style="display:inline-flex; align-items:center; gap:6px;">
-                  (
-                  <input type="number" name="periods" min="1" style="width:60px; padding:4px;" placeholder="期數"
-                    required>
-                  )
-                  <button class="btn" type="submit">補繳</button>
-                  </form>
-              </li>
-
-
-              {% endfor %}
-            </ul>
-            {% endif %}
-          </div>
-
         </div>
 
+        <div class="card">
+          <h2>通知</h2>
+
+          <h3>今日收款</h3>
+          {% if today_due_records|length == 0 %}
+          <p>今天沒有到期的繳款</p>
+          {% else %}
+          <ul class="notice-list">
+            {% for r in today_due_records %}
+            <li>
+              🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
+              <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
+                <button class="btn" type="submit">已繳款</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+
+          <h3>明日收款</h3>
+          {% set ns = namespace(has_tomorrow=false) %}
+          <ul class="notice-list">
+            {% for r in rows %}
+            {% if r.days_left == 1 and (r.paid_count < r.periods) %} {% set ns.has_tomorrow=true %} <li>⏳ {{ r.name
+              }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
+              {% endif %}
+              {% endfor %}
+          </ul>
+          {% if not ns.has_tomorrow %}
+          <p>明天沒有到期的收款</p>
+          {% endif %}
+
+          <h3>逾期</h3>
+          {% if overdue_records|length == 0 %}
+          <p>目前沒有逾期</p>
+          {% else %}
+          <ul class="notice-list">
+            {% for r in overdue_records %}
+            <li>
+              {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
+              {% set delta = -r.days_left %}
+
+              {# 先算逾期幾期（原始） #}
+              {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
+
+              {# 剩餘期數 = 總期數 - 已繳期數（下限 0） #}
+              {% set remaining = (r.periods - r.paid_count) %}
+              {% if remaining < 0 %}{% set remaining=0 %}{% endif %} {# 逾期期數上限：不能超過剩餘期數 #} {% set
+                overdue_periods=overdue_raw if overdue_raw < remaining else remaining %} ❗ {{ r.name }}（逾期 {{
+                overdue_periods }} 期） <form action="/pay/{{ r.id }}" method="post"
+                style="display:inline-flex; align-items:center; gap:6px;">
+                (
+                <input type="number" name="periods" min="1" style="width:60px; padding:4px;" placeholder="期數" required>
+                )
+                <button class="btn" type="submit">補繳</button>
+                </form>
+            </li>
+
+
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
 
       </div>
 
-      <!-- 取消彈跳通知視窗（不再 alert） -->
 
-      {% endif %}
     </div>
 
+    <!-- 取消彈跳通知視窗（不再 alert） -->
 
-    <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
-        initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
-      });
+    {% endif %}
+  </div>
 
-      function initToggle(cardId, btnId, showText, hideText) {
-        const el = document.getElementById(cardId);
-        const btn = document.getElementById(btnId);
-        if (!el || !btn) return;
-        const hidden = el.classList.contains('is-hidden');
-        btn.textContent = hidden ? showText : hideText;
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
+      initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
+    });
+
+    function initToggle(cardId, btnId, showText, hideText) {
+      const el = document.getElementById(cardId);
+      const btn = document.getElementById(btnId);
+      if (!el || !btn) return;
+      const hidden = el.classList.contains('is-hidden');
+      btn.textContent = hidden ? showText : hideText;
+      btn.classList.toggle('active', !hidden);
+    }
+
+    function toggleSection(id, btn) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.classList.toggle('is-hidden');
+      const hidden = el.classList.contains('is-hidden');
+
+      if (btn) {
+        if (id === 'currentCard') {
+          btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+        } else if (id === 'expenseCard') {
+          btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
+        }
         btn.classList.toggle('active', !hidden);
       }
+    }
 
-      function toggleSection(id, btn) {
-        const el = document.getElementById(id);
-        if (!el) return;
-
-        el.classList.toggle('is-hidden');
-        const hidden = el.classList.contains('is-hidden');
-
-        if (btn) {
-          if (id === 'currentCard') {
-            btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-          } else if (id === 'expenseCard') {
-            btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
-          }
-          btn.classList.toggle('active', !hidden);
-        }
+    function toggleBulkMode() {
+      const card = document.getElementById('currentCard');
+      card.classList.toggle('bulk-mode');
+      if (!card.classList.contains('bulk-mode')) {
+        document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = false);
+        const all = document.getElementById('bulkSelectAll');
+        if (all) all.checked = false;
       }
-
-      function toggleBulkMode() {
-        const card = document.getElementById('currentCard');
-        card.classList.toggle('bulk-mode');
-        if (!card.classList.contains('bulk-mode')) {
-          document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = false);
-          const all = document.getElementById('bulkSelectAll');
-          if (all) all.checked = false;
-        }
-      }
-      function toggleSelectAll(master) {
-        document.querySelectorAll('input[name="record_ids"]').forEach(cb => {
-          cb.checked = master.checked;
-        });
-      }
-      function confirmBulkDelete() {
-        const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
-        if (n === 0) { alert('請先勾選要刪除的資料'); return false; }
-        return confirm(`確定要刪除 ${n} 筆資料嗎？`);
-      }
-    </script>
+    }
+    function toggleSelectAll(master) {
+      document.querySelectorAll('input[name="record_ids"]').forEach(cb => {
+        cb.checked = master.checked;
+      });
+    }
+    function confirmBulkDelete() {
+      const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
+      if (n === 0) { alert('請先勾選要刪除的資料'); return false; }
+      return confirm(`確定要刪除 ${n} 筆資料嗎？`);
+    }
+  </script>
 
 
 
