@@ -126,7 +126,7 @@ def init_db():
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             if IS_SQLITE:
-                # 1 users
+                # users
                 cur.execute(
                     """
                 CREATE TABLE IF NOT EXISTS users (
@@ -134,6 +134,14 @@ def init_db():
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL
                 );
+                """
+                )
+
+                # ✅ 補 users.activated_at（開通時間）
+                cur.execute(
+                    """
+                ALTER TABLE users
+                ADD COLUMN activated_at TEXT
                 """
                 )
 
@@ -197,6 +205,12 @@ def init_db():
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL
                 );
+                """
+                )
+                cur.execute(
+                    """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS activated_at TEXT
                 """
                 )
 
@@ -856,7 +870,7 @@ def admin_users(request: Request):
         with get_cursor(conn) as cur:
             cur.execute(
                 """
-                SELECT id, username
+                SELECT id, username, activated_at
                 FROM users
                 ORDER BY id DESC
             """
@@ -866,13 +880,47 @@ def admin_users(request: Request):
     users = []
     for r in rows:
         if isinstance(r, sqlite3.Row):
-            users.append({"id": int(r["id"]), "username": r["username"]})
+            users.append(
+                {
+                    "id": int(r["id"]),
+                    "username": r["username"],
+                    "activated_at": r["activated_at"],
+                }
+            )
         else:
-            users.append({"id": int(r[0]), "username": r[1]})
+            users.append(
+                {
+                    "id": int(r[0]),
+                    "username": r[1],
+                    "activated_at": r[2],
+                }
+            )
 
-    return templates.TemplateResponse(
-        "admin_users.html", {"request": request, "user": admin, "users": users}
-    )
+
+@app.post("/admin/users/activate")
+def admin_set_activation(
+    request: Request,
+    user_id: int = Form(...),
+    activated_at: str = Form(""),
+):
+    user = require_login(request)
+    if not user or not user.get("is_admin"):
+        return RedirectResponse("/", status_code=303)
+
+    init_db()
+    activated_at = (
+        activated_at or ""
+    ).strip()  # 建議格式：2026-01-18 或 2026-01-18 14:30
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET activated_at = {PH} WHERE id = {PH}",
+                (activated_at if activated_at else None, user_id),
+            )
+        conn.commit()
+
+    return RedirectResponse("/admin/users", status_code=303)
 
 
 @app.post("/history/delete")
