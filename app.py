@@ -123,6 +123,9 @@ def get_cursor(conn):
 
 
 def _sqlite_has_column(cur, table: str, col: str) -> bool:
+    # ✅ 防呆：只允許 SQLite 執行 PRAGMA
+    if not IS_SQLITE:
+        return True  # 回 True：即使被誤叫，也不會進入 ALTER ADD COLUMN
     cur.execute(f"PRAGMA table_info({table})")
     cols = [r["name"] for r in cur.fetchall()]
     return col in cols
@@ -868,7 +871,7 @@ def admin_users_activate(
                 f"UPDATE users SET activated_at = {PH} WHERE id = {PH}",
                 (value, user_id),
             )
-    conn.commit()
+        conn.commit()
 
     return RedirectResponse("/admin/users", status_code=303)
 
