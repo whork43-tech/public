@@ -850,7 +850,7 @@ def admin_users(request: Request):
 def admin_users_activate(
     request: Request,
     user_id: int = Form(...),
-    activated_at: str = Form(""),
+    days: str = Form(""),
     clear: str | None = Form(None),
 ):
     init_db()
@@ -862,8 +862,20 @@ def admin_users_activate(
     if clear == "1":
         activated_at = ""
 
-    activated_at = (activated_at or "").strip()
-    value = activated_at if activated_at else None
+    from datetime import date, timedelta
+
+    days = (days or "").strip()
+
+    # 清除開通
+    if clear == "1":
+        value = None
+    else:
+        if not days:
+            value = None
+        else:
+            d = int(days)  # 例如 30
+            until = date.today() + timedelta(days=d)  # 你要 A 版本：今天+30天
+            value = until.isoformat()  # "2026-02-17" 這種
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
