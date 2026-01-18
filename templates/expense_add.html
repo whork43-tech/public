@@ -1,31 +1,76 @@
 <!doctype html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>新增開銷</title>
   <link rel="stylesheet" href="/static/style.css?v=1002">
 </head>
+
 <body>
   <div class="container">
     <h1>新增開銷</h1>
 
     <div class="card">
-      <form method="post" action="/expense/add" class="form-grid">
-        <label>項目
-          <input type="text" name="item" required placeholder="例如：午餐 / 油錢 / 材料費">
-        </label>
+      <form method="post" action="/expense/add" class="form-grid" id="expenseForm">
+        <div id="expenseRows" style="grid-column: 1 / -1; display:flex; flex-direction:column; gap:10px;">
+          <div class="exp-row" style="display:grid; grid-template-columns: 1fr 140px 44px; gap:10px; align-items:end;">
+            <label style="margin:0;">項目
+              <input type="text" name="item" required placeholder="例如：午餐 / 油錢 / 材料費">
+            </label>
 
-        <label>金額
-          <input type="number" name="amount" required min="1" placeholder="例如：150">
-        </label>
+            <label style="margin:0;">金額
+              <input type="number" name="amount" required min="1" placeholder="例如：150">
+            </label>
 
-        <div style="grid-column: 1 / -1; display:flex; gap:10px;">
-          <button type="submit" class="btn primary">新增開銷</button>
+            <button type="button" class="btn" onclick="removeExpenseRow(this)" title="刪除這列">－</button>
+          </div>
+        </div>
+
+        <div style="grid-column: 1 / -1; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="btn" onclick="addExpenseRow()">＋</button>
+          <button type="submit" class="btn primary">一次新增</button>
           <a class="btn" href="/">返回首頁</a>
         </div>
       </form>
+
+      <script>
+        function addExpenseRow() {
+          const wrap = document.getElementById('expenseRows');
+          const row = document.createElement('div');
+          row.className = 'exp-row';
+          row.style = "display:grid; grid-template-columns: 1fr 140px 44px; gap:10px; align-items:end;";
+
+          row.innerHTML = `
+      <label style="margin:0;">項目
+        <input type="text" name="item" required placeholder="例如：午餐 / 油錢 / 材料費">
+      </label>
+      <label style="margin:0;">金額
+        <input type="number" name="amount" required min="1" placeholder="例如：150">
+      </label>
+      <button type="button" class="btn" onclick="removeExpenseRow(this)" title="刪除這列">－</button>
+    `;
+          wrap.appendChild(row);
+        }
+
+        function removeExpenseRow(btn) {
+          const row = btn.closest('.exp-row');
+          const wrap = document.getElementById('expenseRows');
+          if (!row || !wrap) return;
+
+          // 至少保留 1 列
+          if (wrap.querySelectorAll('.exp-row').length <= 1) {
+            // 清空但不刪
+            row.querySelectorAll('input').forEach(i => i.value = '');
+            return;
+          }
+          row.remove();
+        }
+      </script>
+
     </div>
   </div>
 </body>
+
 </html>
