@@ -831,7 +831,7 @@ def add_record(
                 paid_at = today_str() if count_today_b else created_date
                 cur.execute(
                     f"""
-                    INSERT INTO payments (paid_at, amount, record_id, user_id)
+                    INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
                     VALUES ({PH}, {PH}, {PH}, {PH})
                     """,
                     (paid_at, int(amount), int(record_id), user["user_id"]),
