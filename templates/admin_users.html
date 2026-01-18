@@ -42,8 +42,7 @@
                 <form method="post" action="/admin/users/activate"
                   style="display:flex; gap:8px; align-items:center; margin:0;">
                   <input type="hidden" name="user_id" value="{{ u.id }}">
-                  <input type="text" name="activated_at" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM"
-                    value="{{ u.activated_at or '' }}" style="width:190px;">
+                  <input type="number" name="days" min="1" placeholder="開通天數" style="width:110px;">
                   <button class="btn" type="submit">設定</button>
                   {% if u.activated_at %}
                   <button class="btn danger" type="submit" name="clear" value="1"
