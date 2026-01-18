@@ -271,8 +271,14 @@
           {% else %}
           <ul class="notice-list" style="margin-top:10px;">
             {% for e in today_expenses %}
-            <li>• {{ e.item }}：{{ e.amount }}</li>
+            <li>
+              • {{ e.item }}：{{ e.amount }}
+              <a class="btn" href="/expense/edit/{{ e.id }}" style="margin-left:8px;">
+                編輯
+              </a>
+            </li>
             {% endfor %}
+
           </ul>
           {% endif %}
         </div>

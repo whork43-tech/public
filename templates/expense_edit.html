@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>編輯開銷</title>
+    <link rel="stylesheet" href="/static/style.css?v=1002">
+</head>
+
+<body>
+    <div class="container">
+        <h1>編輯開銷</h1>
+
+        <div class="card">
+            <form method="post" action="/expense/edit/{{ e.id }}" class="form-grid">
+                <label>項目
+                    <input type="text" name="item" value="{{ e.item }}" required>
+                </label>
+                <label>金額
+                    <input type="number" name="amount" min="1" value="{{ e.amount }}" required>
+                </label>
+
+                <button class="btn primary" type="submit">儲存</button>
+                <a class="btn" href="/">返回首頁</a>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

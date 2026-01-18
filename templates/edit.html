@@ -1,11 +1,13 @@
 <!doctype html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>編輯資料</title>
   <link rel="stylesheet" href="/static/style.css?v=999">
 </head>
+
 <body>
   <div class="container">
     <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
@@ -22,7 +24,9 @@
         <label>名稱
           <input type="text" name="name" value="{{ r.name }}" required>
         </label>
-
+        <label>票面
+          <input type="number" name="face_value" min="0" value="{{ r.face_value }}" required>
+        </label>
         <label>支出
           <input type="number" name="total_amount" min="0" value="{{ r.total_amount }}" required>
         </label>
@@ -44,4 +48,5 @@
     </div>
   </div>
 </body>
+
 </html>
