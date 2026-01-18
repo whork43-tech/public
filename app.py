@@ -489,7 +489,7 @@ def get_today_expenses_for_user(user_id: int):
                 {"id": int(r["id"]), "item": r["item"], "amount": int(r["amount"])}
             )
         else:
-            out.append({"id": int(r[0]), "item": r[2], "amount": int(r[3])})
+            out.append({"id": int(r[0]), "item": r[1], "amount": int(r[2])})
     return out
 
 
@@ -1269,11 +1269,13 @@ def edit_page(request: Request, record_id: int):
 
 
 @app.post("/edit/{record_id}")
+@app.post("/edit/{record_id}")
 def edit_save(
     request: Request,
     record_id: int,
     created_date: str = Form(...),
     name: str = Form(...),
+    face_value: int = Form(0),
     total_amount: int = Form(...),
     periods: int = Form(...),
     amount: int = Form(...),
@@ -1301,6 +1303,7 @@ def edit_save(
                 (
                     created_date,
                     name,
+                    face_value,
                     total_amount,
                     periods,
                     amount,
