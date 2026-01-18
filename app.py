@@ -138,12 +138,8 @@ def init_db():
                 )
 
                 # ✅ 補 users.activated_at（開通時間）
-                cur.execute(
-                    """
-                ALTER TABLE users
-                ADD COLUMN activated_at TEXT
-                """
-                )
+            if not _sqlite_has_column(cur, "users", "activated_at"):
+                cur.execute("ALTER TABLE users ADD COLUMN activated_at TEXT")
 
                 # 2 records（✅加 face_value）
                 cur.execute(
@@ -898,26 +894,35 @@ def admin_users(request: Request):
 
 
 @app.post("/admin/users/activate")
-def admin_set_activation(
+def admin_users_activate(
     request: Request,
     user_id: int = Form(...),
     activated_at: str = Form(""),
+    clear: str | None = Form(None),
 ):
-    user = require_login(request)
-    if not user or not user.get("is_admin"):
-        return RedirectResponse("/", status_code=303)
-
     init_db()
-    activated_at = (
-        activated_at or ""
-    ).strip()  # 建議格式：2026-01-18 或 2026-01-18 14:30
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    # 清除開通時間
+    if clear == "1":
+        activated_at = ""
+
+    activated_at = (activated_at or "").strip()
+    value = activated_at if activated_at else None
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
                 f"UPDATE users SET activated_at = {PH} WHERE id = {PH}",
-                (activated_at if activated_at else None, user_id),
+                (value, user_id),
             )
+        return templates.TemplateResponse(
+            "admin_users.html",
+            {"request": request, "user": admin, "users": users},
+        )
+
         conn.commit()
 
     return RedirectResponse("/admin/users", status_code=303)
