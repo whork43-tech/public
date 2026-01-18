@@ -748,34 +748,95 @@ def add_record(
     amount: int = Form(...),
     periods: int = Form(...),
     interval_days: int = Form(...),
+    as_period1: str | None = Form(None),
+    use_face_value: str | None = Form(None),
+    deduct_first_period_expense: str | None = Form(None),
+    count_today: str | None = Form(None),
 ):
     user = require_login(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
 
     init_db()
+
+    # ✅ checkbox 轉 bool（這段就是你問的「要補在哪裡」：放在 init_db 後面）
+    as_period1_b = as_period1 == "1"
+    use_face_value_b = use_face_value == "1"
+    deduct_first_period_expense_b = deduct_first_period_expense == "1"
+    count_today_b = count_today == "1"
+
+    # ✅ 票：未勾選就視為 0（只影響票/餘）
+    face_value_effective = int(face_value or 0) if use_face_value_b else 0
+
+    # ✅ 支出：你說「支出=每期金額，勾選就扣第一期」=> total_amount 先加一個 amount
+    total_amount_effective = int(total_amount or 0)
+    if deduct_first_period_expense_b:
+        total_amount_effective += int(amount or 0)
+
+    # ✅ 期：勾選就等於已經算第1期
+    paid_count = 1 if as_period1_b else 0
+
+    # ✅ 這個設計維持你原本規則：建立日不算收款日
     last_paid_day = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            cur.execute(
-                f"""
-            INSERT INTO records
-            (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
-            VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, 0, {PH}, {PH})
-            """,
-                (
-                    created_date,
-                    name,
-                    face_value,
-                    total_amount,
-                    periods,
-                    amount,
-                    interval_days,
-                    last_paid_day,
-                    user["user_id"],
-                ),
-            )
+            # 先寫 records，拿 record_id
+            if IS_SQLITE:
+                cur.execute(
+                    f"""
+                    INSERT INTO records
+                    (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+                    """,
+                    (
+                        created_date,
+                        name,
+                        face_value_effective,
+                        total_amount_effective,
+                        int(periods),
+                        int(amount),
+                        int(interval_days),
+                        int(paid_count),
+                        int(last_paid_day),
+                        user["user_id"],
+                    ),
+                )
+                record_id = cur.lastrowid
+            else:
+                cur.execute(
+                    f"""
+                    INSERT INTO records
+                    (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+                    RETURNING id
+                    """,
+                    (
+                        created_date,
+                        name,
+                        face_value_effective,
+                        total_amount_effective,
+                        int(periods),
+                        int(amount),
+                        int(interval_days),
+                        int(paid_count),
+                        int(last_paid_day),
+                        user["user_id"],
+                    ),
+                )
+                record_id = cur.fetchone()[0]
+
+            # ✅ 勾「期」：自動寫第 1 期進歷史 payments
+            if as_period1_b:
+                paid_at = today_str() if count_today_b else created_date
+                cur.execute(
+                    f"""
+                    INSERT INTO payments (paid_at, amount, record_id, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH})
+                    """,
+                    (paid_at, int(amount), int(record_id), user["user_id"]),
+                )
+
         conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
