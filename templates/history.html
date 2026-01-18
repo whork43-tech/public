@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="zh-Hant">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,22 +8,35 @@
   <link rel="stylesheet" href="/static/style1.css?v=999">
   <style>
     /* 只補歷史頁需要的樣式，不影響其他頁 */
-    details { margin: 0; }
-    summary { cursor: pointer; list-style: none; }
-    summary::-webkit-details-marker { display: none; }
+    details {
+      margin: 0;
+    }
+
+    summary {
+      cursor: pointer;
+      list-style: none;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
 
     .month-summary {
-      display:flex; align-items:center; justify-content:space-between;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       padding: 10px 12px;
       border-radius: 12px;
       background: #ffffff;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
       margin: 12px 0;
       font-weight: 800;
     }
 
     .day-thumb {
-      display:flex; align-items:center; justify-content:space-between;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       padding: 10px 12px;
       border-radius: 12px;
       background: #fff;
@@ -30,26 +44,42 @@
       margin: 8px 0;
     }
 
-    .day-total { font-weight: 800; }
+    .day-total {
+      font-weight: 800;
+    }
 
-    .day-body { padding: 10px 12px 4px 12px; }
+    .day-body {
+      padding: 10px 12px 4px 12px;
+    }
 
     .bulk-bar {
-      display:flex; gap:10px; align-items:center;
+      display: flex;
+      gap: 10px;
+      align-items: center;
       margin: 8px 0 12px 0;
     }
 
     .pay-item {
-      display:flex; align-items:center; justify-content:space-between;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 10px;
       padding: 6px 0;
     }
 
-    .pay-left { display:flex; align-items:center; gap:8px; }
+    .pay-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-    .muted2 { color:#666; font-size: 14px; }
+    .muted2 {
+      color: #666;
+      font-size: 14px;
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>📊 歷史繳款</h1>
@@ -60,77 +90,85 @@
     </div>
 
     {% if groups|length == 0 %}
-      <div class="card">
-        <p class="muted">目前沒有任何繳款紀錄</p>
-      </div>
+    <div class="card">
+      <p class="muted">目前沒有任何繳款紀錄</p>
+    </div>
     {% else %}
 
-      {#
-        groups: [{date:'YYYY-MM-DD', total:..., payments:[{id,name,amount,period_no?...}]}]
-        這裡用 date[:7] 做月份分組
-      #}
+    {#
+    groups: [{date:'YYYY-MM-DD', total:..., payments:[{id,name,amount,period_no?...}]}]
+    這裡用 date[:7] 做月份分組
+    #}
 
-      {% set ns = namespace(month=None, open_month=False) %}
+    {% set ns = namespace(month=None, open_month=False) %}
 
-      {% for g in groups %}
-        {% set m = g.date[:7] %}
+    {% for g in groups %}
+    {% set m = g.date[:7] %}
 
-        {% if ns.month != m %}
-          {# 關閉上一個月份容器 #}
-          {% if ns.open_month %}
-              </div>
-            </details>
-          {% endif %}
+    {% if ns.month != m %}
+    {# 關閉上一個月份容器 #}
+    {% if ns.open_month %}
+  </div>
+  </details>
+  {% endif %}
 
-          {% set ns.month = m %}
-          {% set ns.open_month = True %}
+  {% set ns.month = m %}
+  {% set ns.open_month = True %}
 
-          <details open>
-            <summary class="month-summary">
-              <span>📅 {{ m }}</span>
-              <span class="muted2">點我展開/收合</span>
-            </summary>
-            <div style="margin: 10px 0 18px 0;">
-        {% endif %}
+  <details open>
+    <summary class="month-summary">
+      <span>📅 {{ m }}</span>
+      <span class="muted2">點我展開/收合</span>
+    </summary>
+    <div style="margin: 10px 0 18px 0;">
+      {% endif %}
 
-        {# 每一天：縮圖 -> 點開才看到內容 #}
-        <details>
-          <summary class="day-thumb">
-            <span><b>{{ g.date }}</b></span>
-            <span class="day-total">總收：{{ g.total }}</span>
-          </summary>
+      {# 每一天：縮圖 -> 點開才看到內容 #}
+      <details>
+        <summary class="day-thumb">
+          <span><b>{{ g.date }}</b></span>
+          <span class="day-total">總收：{{ g.total }}</span>
+        </summary>
 
-          <div class="card day-body">
-            <form method="post" action="/history/delete-multiple" onsubmit="return confirmHistoryBulk('{{ g.date }}');" style="margin:0;">
-              <div class="bulk-bar">
-                <label style="display:flex; align-items:center; gap:6px;">
-                  <input type="checkbox" onclick="toggleSelectAllDay('{{ g.date|replace('-', '') }}', this)"> 全選
-                </label>
-                <button class="btn danger" type="submit">刪除勾選</button>
-              </div>
-
-              <div id="day-{{ g.date|replace('-', '') }}">
-                {% for it in g.payments %}
-                  <div class="pay-item">
-                    <div class="pay-left">
-                      <input type="checkbox" name="payment_ids" value="{{ it.id }}">
-                      <span>✅ {{ it.name }}{% if it.period_no %}：第 {{ it.period_no }} 期{% endif %}｜{{ it.amount }}</span>
-                    </div></div>
-                {% endfor %}
-              </div>
-            </form>
-          </div>
-        </details>
-
-        {# 迴圈結束要收尾最後一個月份容器 #}
-        {% if loop.last and ns.open_month %}
+        <div class="card day-body">
+          <form method="post" action="/history/delete-multiple" onsubmit="return confirmHistoryBulk('{{ g.date }}');"
+            style="margin:0;">
+            <div class="bulk-bar">
+              <label style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" onclick="toggleSelectAllDay('{{ g.date|replace('-', '') }}', this)"> 全選
+              </label>
+              <button class="btn danger" type="submit">刪除勾選</button>
             </div>
-          </details>
-        {% endif %}
 
-      {% endfor %}
+            <div id="day-{{ g.date|replace('-', '') }}">
+              {% for it in g.payments %}
+              <div class="pay-item">
+                <div class="pay-left">
+                  <input type="checkbox" name="payment_ids" value="{{ it.id }}">
+                  <span>
+                    ✅ {{ it.name }}
+                    {% if it.period_no %}
+                    /第{{ it.period_no }}期
+                    {% endif %}
+                    /實收{{ it.amount }}
+                  </span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </form>
+        </div>
+      </details>
 
-    {% endif %}
+      {# 迴圈結束要收尾最後一個月份容器 #}
+      {% if loop.last and ns.open_month %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% endfor %}
+
+  {% endif %}
   </div>
 
   <script>
@@ -156,4 +194,5 @@
     }
   </script>
 </body>
+
 </html>
