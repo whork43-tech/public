@@ -564,6 +564,34 @@ def get_history_grouped(user_id: int):
     return sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
 
 
+def get_expense_history_grouped(user_id: int):
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT spent_at, item, amount
+                FROM expenses
+                WHERE user_id = {PH}
+                ORDER BY spent_at DESC, id DESC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+
+    by_date = {}
+    for r in rows:
+        spent_at = r["spent_at"] if isinstance(r, sqlite3.Row) else r[0]
+        item = r["item"] if isinstance(r, sqlite3.Row) else r[1]
+        amount = r["amount"] if isinstance(r, sqlite3.Row) else r[2]
+
+        d = spent_at if isinstance(spent_at, str) else spent_at.isoformat()
+        by_date.setdefault(d, {"date": d, "total": 0, "expenses": []})
+        by_date[d]["total"] += int(amount)
+        by_date[d]["expenses"].append({"item": item, "amount": int(amount)})
+
+    return sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
+
+
 # ======================
 # Routes
 # ======================
@@ -606,6 +634,9 @@ def home(request: Request):
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
+
+    # ✅ 今日淨收
+    today_net = int(today_total) - int(today_expense_total)
     # ✅ 總票面：只計「目前資料＝未結清」(paid_count < periods) 的票面總和
     total_face_value = sum(
         int((r.get("face_value") or 0))
@@ -629,6 +660,7 @@ def home(request: Request):
             "today_expenses": today_expenses,
             "today_total": today_total,
             "total_face_value": total_face_value,
+            "today_net": today_net,
         },
     )
 
@@ -758,9 +790,16 @@ def history(request: Request):
 
     init_db()
     groups = get_history_grouped(user["user_id"])
+    expense_groups = get_expense_history_grouped(user["user_id"])
 
     return templates.TemplateResponse(
-        "history.html", {"request": request, "user": user, "groups": groups}
+        "history.html",
+        {
+            "request": request,
+            "user": user,
+            "groups": groups,
+            "expense_groups": expense_groups,
+        },
     )
 
 
@@ -838,8 +877,8 @@ def expense_page(request: Request):
 @app.post("/expense/add")
 def add_expense(
     request: Request,
-    item: str = Form(...),
-    amount: int = Form(...),
+    item: list[str] = Form([]),
+    amount: list[str] = Form([]),
 ):
     user = require_login(request)
     if not user:
@@ -847,14 +886,35 @@ def add_expense(
 
     init_db()
 
-    # 防呆
-    item = (item or "").strip()
-    try:
-        amount = int(amount)
-    except Exception:
-        amount = 0
-    if not item or amount <= 0:
+    items = item or []
+    amounts = amount or []
+
+    to_insert: list[tuple[str, int]] = []
+    for it, am in zip(items, amounts):
+        it = (it or "").strip()
+        try:
+            am_int = int(am)
+        except Exception:
+            am_int = 0
+        if it and am_int > 0:
+            to_insert.append((it, am_int))
+
+    if not to_insert:
         return RedirectResponse(url="/expense-page", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            for it, am_int in to_insert:
+                cur.execute(
+                    f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                    (today_str(), it, am_int, user["user_id"]),
+                )
+        conn.commit()
+
+    return RedirectResponse(
+        url="/?paid_msg=" + quote(f"新增開銷完成（{len(to_insert)}筆）"),
+        status_code=303,
+    )
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
