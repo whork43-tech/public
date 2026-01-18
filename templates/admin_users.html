@@ -45,17 +45,28 @@
                   <input type="text" name="activated_at" placeholder="YYYY-MM-DD 或 YYYY-MM-DD HH:MM"
                     value="{{ u.activated_at or '' }}" style="width:190px;">
                   <button class="btn" type="submit">設定</button>
+                  {% if u.activated_at %}
+                  <button class="btn danger" type="submit" name="clear" value="1"
+                    onclick="return confirm('確定要清除開通時間？');">
+                    清除
+                  </button>
+                  {% endif %}
                 </form>
               </td>
             </tr>
-
-
-            {% if users|length == 0 %}
-            <p class="muted" style="margin-top:12px;">目前沒有帳號</p>
-            {% endif %}
+            {% else %}
+            <tr>
+              <td colspan="4" class="muted" style="padding:12px;">目前沒有帳號</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 </body>
+
+</html>
+
 
 </html>
