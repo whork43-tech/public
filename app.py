@@ -623,7 +623,7 @@ def home(request: Request):
 
     paid_sum_map = get_paid_sum_map(user["user_id"])
     for r in rows:
-        r["paid_sum"] = paid_sum_map.get(r["id"], r["paid_count"] * r["amount"])
+        r["paid_sum"] = paid_sum_map.get(r["id"], 0)
 
     today_due_records = [r for r in rows if r["is_due_today"]]
     overdue_records = [r for r in rows if r["is_overdue"]]
@@ -825,17 +825,6 @@ def add_record(
                     ),
                 )
                 record_id = cur.fetchone()[0]
-
-            # ✅ 勾「期」：自動寫第 1 期進歷史 payments
-            if as_period1_b:
-                paid_at = today_str() if count_today_b else created_date
-                cur.execute(
-                    f"""
-                    INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
-                    """,
-                    (paid_at, int(amount), int(record_id), name, user["user_id"]),
-                )
 
         conn.commit()
 
