@@ -191,6 +191,13 @@ def init_db():
             """
             )
 
+            cur.execute(
+                """
+            ALTER TABLE records
+            ADD COLUMN IF NOT EXISTS use_face_value BOOLEAN NOT NULL DEFAULT TRUE
+            """
+            )
+
             # is_deleted（SQLite / Postgres 都支援 IF NOT EXISTS）
             cur.execute(
                 """
@@ -752,6 +759,7 @@ def add_record(
     use_face_value: str | None = Form(None),
     deduct_first_period_expense: str | None = Form(None),
     count_today: str | None = Form(None),
+    ticket_deduct_one: str | None = Form(None),
 ):
     user = require_login(request)
     if not user:
@@ -765,8 +773,7 @@ def add_record(
     deduct_first_period_expense_b = deduct_first_period_expense == "1"
     count_today_b = count_today == "1"
 
-    # ✅ 票：未勾選就視為 0（只影響票/餘）
-    face_value_effective = int(face_value or 0) if use_face_value_b else 0
+    face_value_effective = int(face_value or 0)
 
     # ✅ 支出：你說「支出=每期金額，勾選就扣第一期」=> total_amount 先加一個 amount
     total_amount_effective = int(total_amount or 0)
@@ -778,6 +785,8 @@ def add_record(
 
     # ✅ 這個設計維持你原本規則：建立日不算收款日
     last_paid_day = 0
+
+    ticket_deduct_one_b = ticket_deduct_one == "1"
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -825,6 +834,17 @@ def add_record(
                     ),
                 )
                 record_id = cur.fetchone()[0]
+
+                # ✅ 票 checkbox：只影響「餘」，不影響票面
+            if ticket_deduct_one_b:
+                cur.execute(
+                    f"""
+        UPDATE records
+        SET total_amount = total_amount - {PH}
+        WHERE id = {PH} AND user_id = {PH}
+        """,
+                    (int(amount), record_id, user["user_id"]),
+                )
 
         conn.commit()
 
