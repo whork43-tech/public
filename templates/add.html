@@ -51,30 +51,33 @@
         <div class="card" style="grid-column: 1 / -1; padding: 12px;">
           <div style="font-weight:700; margin-bottom:6px;">新增日是否做為第一期</div>
 
-          <label style="display:flex; gap:8px; align-items:center; margin:6px 0;">
-            <input type="checkbox" name="as_period1" value="1">
-            期（= 第 1 期）
-          </label>
+          <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center;">
+            <label style="display:flex; gap:8px; align-items:center; margin:0;">
+              <input type="checkbox" name="as_period1" value="1">
+              期（= 新增日為第 1 期）
+            </label>
 
-          <label style="display:flex; gap:8px; align-items:center; margin:6px 0;">
-            <input type="checkbox" name="use_face_value" value="1" checked>
-            票（票面）
-          </label>
+            <label style="display:flex; gap:8px; align-items:center; margin:0;">
+              <input type="checkbox" name="use_face_value" value="1" checked>
+              票（票面扣除第一期繳款金）
+            </label>
 
-          <label style="display:flex; gap:8px; align-items:center; margin:6px 0;">
-            <input type="checkbox" name="deduct_first_period_expense" value="1">
-            支出（勾選會扣除支出的餘）
-          </label>
+            <label style="display:flex; gap:8px; align-items:center; margin:0;">
+              <input type="checkbox" name="deduct_first_period_expense" value="1">
+              支出（支出扣除第一期繳款金）
+            </label>
 
-          <label style="display:flex; gap:8px; align-items:center; margin:6px 0;">
-            <input type="checkbox" name="count_today" value="1" checked>
-            是否算入今日實收
-          </label>
+            <label style="display:flex; gap:8px; align-items:center; margin:0;">
+              <input type="checkbox" name="count_today" value="1">
+              是否算入今日實收
+            </label>
+          </div>
 
-          <div style="font-size: 13px; opacity: .75; margin-top: 6px;">
-            以上勾選會自動算入各明細
+          <div style="font-size: 13px; opacity: .75; margin-top: 8px;">
+            以上勾選會自動算入各明細 無勾選不影響新增
           </div>
         </div>
+
 
 
         <button type="submit" class="btn primary">儲存</button>
