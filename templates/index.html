@@ -264,22 +264,24 @@
 
         <div class="card is-hidden" id="expenseCard">
           <h2>今日開銷</h2>
-          <p style="font-size: 22px; margin: 0;"><b>{{ today_expense_total }}</b></p>
 
-          {% if today_expenses|length == 0 %}
-          <p class="muted" style="margin-top:10px;">今天尚未新增開銷</p>
-          {% else %}
-          <ul class="notice-list" style="margin-top:10px;">
-            {% for e in today_expenses %}
-            <li>
-              • {{ e.item }}：{{ e.amount }}
-              <a class="btn" href="/expense/edit/{{ e.id }}" style="margin-left:8px;">
-                編輯
-              </a>
-            </li>
-            {% endfor %}
+          <form method="post" action="/expense/delete-multiple" id="expenseBulkForm">
+            <div style="margin-bottom:8px;">
+              <button type="submit" class="btn danger" onclick="return confirm('確定要刪除勾選的開銷？');">
+                刪除勾選
+              </button>
+            </div>
 
-          </ul>
+            <ul>
+              {% for e in today_expenses %}
+              <li style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" name="expense_ids" value="{{ e.id }}">
+                <span>• {{ e.item }}：{{ e.amount }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </form>
+
           {% endif %}
         </div>
 
