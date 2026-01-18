@@ -832,9 +832,9 @@ def add_record(
                 cur.execute(
                     f"""
                     INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH})
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
                     """,
-                    (paid_at, int(amount), int(record_id), user["user_id"]),
+                    (paid_at, int(amount), int(record_id), name, user["user_id"]),
                 )
 
         conn.commit()
