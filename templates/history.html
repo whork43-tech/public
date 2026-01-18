@@ -127,7 +127,15 @@
       <details>
         <summary class="day-thumb">
           <span><b>{{ g.date }}</b></span>
-          <span class="day-total">總收：{{ g.total }}</span>
+          {% set ex = expense_map.get(g.date) %}
+          {% set exp_total = ex.total if ex else 0 %}
+          {% set net_total = g.total - exp_total %}
+
+          <span class="day-total">
+            總收：{{ g.total }}　
+            總開銷：{{ exp_total }}　
+            淨收：{{ net_total }}
+          </span>
         </summary>
 
         <div class="card day-body">
@@ -157,6 +165,28 @@
               {% endfor %}
             </div>
           </form>
+
+
+          {% if ex and ex.expenses and ex.expenses|length > 0 %}
+          <hr style="margin:12px 0; border:none; border-top:1px solid #eee;">
+          <details>
+            <summary style="font-weight:800;">🧾 當日開銷明細（合計 {{ exp_total }}）</summary>
+            <div style="padding:10px 0 0 0;">
+              {% for e in ex.expenses %}
+              <div class="pay-item">
+                <div class="pay-left">
+                  <span>• {{ e.item }}/{{ e.amount }}</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% else %}
+          <div class="muted2" style="margin-top:10px;">當日無開銷</div>
+          {% endif %}
+
+
+
         </div>
       </details>
 
