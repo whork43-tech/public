@@ -472,13 +472,14 @@ def get_today_expenses_for_user(user_id: int):
         with get_cursor(conn) as cur:
             cur.execute(
                 f"""
-                SELECT id, spent_at, item, amount
+                SELECT id, item, amount
                 FROM expenses
                 WHERE user_id = {PH} AND spent_at = {PH}
                 ORDER BY id DESC
                 """,
                 (user_id, today_str()),
             )
+
             rows = cur.fetchall()
 
     out = []
@@ -968,6 +969,65 @@ def add_expense(
     return RedirectResponse(url="/?paid_msg=" + quote("新增開銷完成"), status_code=303)
 
 
+@app.get("/expense/edit/{expense_id}")
+def expense_edit_page(request: Request, expense_id: int):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    init_db()
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT id, item, amount FROM expenses WHERE id = {PH} AND user_id = {PH}",
+                (expense_id, user["user_id"]),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return RedirectResponse("/", status_code=303)
+
+    if isinstance(row, sqlite3.Row):
+        e = {"id": int(row["id"]), "item": row["item"], "amount": int(row["amount"])}
+    else:
+        e = {"id": int(row[0]), "item": row[1], "amount": int(row[2])}
+
+    return templates.TemplateResponse(
+        "expense_edit.html", {"request": request, "user": user, "e": e}
+    )
+
+
+@app.post("/expense/edit/{expense_id}")
+def expense_edit_save(
+    request: Request,
+    expense_id: int,
+    item: str = Form(...),
+    amount: int = Form(...),
+):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+
+    init_db()
+    item = (item or "").strip()
+    if not item or amount <= 0:
+        return RedirectResponse(f"/expense/edit/{expense_id}", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                UPDATE expenses
+                SET item = {PH}, amount = {PH}
+                WHERE id = {PH} AND user_id = {PH}
+                """,
+                (item, amount, expense_id, user["user_id"]),
+            )
+        conn.commit()
+
+    return RedirectResponse("/?paid_msg=" + quote("開銷已更新"), status_code=303)
+
+
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
@@ -1231,6 +1291,7 @@ def edit_save(
                 UPDATE records
                 SET created_date = {PH},
                     name = {PH},
+                    face_value = {PH},
                     total_amount = {PH},
                     periods = {PH},
                     amount = {PH},
