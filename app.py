@@ -40,6 +40,12 @@ async def all_exception_handler(request: Request, exc: Exception):
     print(f"{request.method} {request.url}")
     print(tb)
     print("=== END ERROR ===\n")
+    print(
+        "DB:",
+        "sqlite" if IS_SQLITE else "postgres",
+        "DATABASE_URL startswith:",
+        DATABASE_URL[:20],
+    )
 
     return PlainTextResponse(tb, status_code=500)
 
@@ -821,10 +827,6 @@ def admin_users(request: Request):
                     "activated_at": r["activated_at"],
                 }
             )
-            return templates.TemplateResponse(
-                "admin_users.html",
-                {"request": request, "user": admin, "users": users},
-            )
 
         else:
             users.append(
@@ -834,6 +836,11 @@ def admin_users(request: Request):
                     "activated_at": r[2],
                 }
             )
+
+    return templates.TemplateResponse(
+        "admin_users.html",
+        {"request": request, "user": admin, "users": users},
+    )
 
 
 @app.post("/admin/users/activate")
@@ -861,12 +868,7 @@ def admin_users_activate(
                 f"UPDATE users SET activated_at = {PH} WHERE id = {PH}",
                 (value, user_id),
             )
-        return templates.TemplateResponse(
-            "admin_users.html",
-            {"request": request, "user": admin, "users": users},
-        )
-
-        conn.commit()
+    conn.commit()
 
     return RedirectResponse("/admin/users", status_code=303)
 
