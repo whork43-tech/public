@@ -157,8 +157,8 @@
               <div class="row-main">
                 <div class="title">{{ r.name }}</div>
                 <div class="meta">
-                  {% set paid_sum = (r.paid_sum if r.paid_sum is defined else (r.paid_count * r.amount)) %}
-                  {% set face_left = (r.face_value - paid_sum) %}
+                  {% set ticket_offset = r.ticket_offset if r.ticket_offset is defined else 0 %}
+                  {% set face_left = r.face_value - ticket_offset %}
                   {% set spend_left = (r.total_amount - paid_sum) %}
                   {% set periods_left = (r.periods - r.paid_count) %}
 
