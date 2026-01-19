@@ -805,7 +805,7 @@ def add_record(
                     f"""
                     INSERT INTO records
                     (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
                     """,
                     (
                         created_date,
