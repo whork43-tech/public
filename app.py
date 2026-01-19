@@ -206,6 +206,13 @@ def init_db():
             """
             )
 
+            cur.execute(
+                """
+            ALTER TABLE records
+            ADD COLUMN IF NOT EXISTS ticket_offset INTEGER NOT NULL DEFAULT 0;
+            """
+            )
+
             # ========== PAYMENTS ==========
             cur.execute(
                 """
@@ -788,6 +795,8 @@ def add_record(
 
     ticket_deduct_one_b = ticket_deduct_one == "1"
 
+    ticket_offset = int(amount or 0) if ticket_deduct_one_b else 0
+
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             # 先寫 records，拿 record_id
@@ -796,7 +805,7 @@ def add_record(
                     f"""
                     INSERT INTO records
                     (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
                     """,
                     (
                         created_date,
@@ -834,17 +843,6 @@ def add_record(
                     ),
                 )
                 record_id = cur.fetchone()[0]
-
-                # ✅ 票 checkbox：只影響「餘」，不影響票面
-            if ticket_deduct_one_b:
-                cur.execute(
-                    f"""
-        UPDATE records
-        SET total_amount = total_amount - {PH}
-        WHERE id = {PH} AND user_id = {PH}
-        """,
-                    (int(amount), record_id, user["user_id"]),
-                )
 
         conn.commit()
 
