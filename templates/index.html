@@ -159,7 +159,8 @@
                 <div class="meta">
                   {% set paid_sum = r.paid_sum if r.paid_sum is defined else 0 %}
                   {% set ticket_offset = r.ticket_offset if r.ticket_offset is defined else 0 %}
-                  {% set face_left = r.face_value - ticket_offset %}
+                  {% set paid_sum = r.paid_sum if r.paid_sum is defined else 0 %}
+                  {% set face_left = r.face_value - ticket_offset - paid_sum %}
                   {% set expense_offset = r.expense_offset if r.expense_offset is defined else 0 %}
                   {% set spend_left = (r.total_amount - paid_sum - expense_offset) %}
                   {% set periods_left = (r.periods - r.paid_count) %}
@@ -246,23 +247,50 @@
       <!-- 右邊：通知 -->
       <div class="side">
 
+        <div class="card" style="text-align:center; margin-bottom:14px;">
+          <div class="seg">
+            <button type="button" class="seg-btn" id="btnToggleToday" onclick="toggleSection('todayCard', this)">
+              💰 顯示今日實收/淨利
+            </button>
 
-        <div style="display:flex; gap:14px; align-items:stretch;">
-          <div class="card" style="flex:1; margin-bottom:14px;">
-            <h2>今日實收</h2>
-            <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
-          </div>
-
-          <div class="card" style="flex:1; margin-bottom:14px;">
-            <h2>今日淨利</h2>
-            <p style="font-size: 22px; margin: 0;"><b>{{ today_net }}</b></p>
-          </div>
-
-          <div class="card" style="flex:1; margin-bottom:14px;">
-            <h2>總票面</h2>
-            <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value }}</b></p>
+            <button type="button" class="seg-btn" id="btnToggleFaceTotal"
+              onclick="toggleSection('faceTotalCard', this)">
+              🎟️ 顯示總票面/票面(餘)
+            </button>
           </div>
         </div>
+
+        <!-- 第一排：今日實收 / 今日淨利 -->
+        <div id="todayCard" class="is-hidden">
+          <div style="display:flex; gap:14px; align-items:stretch; margin-bottom:14px;">
+            <div class="card" style="flex:1; margin:0;">
+              <h2>今日實收</h2>
+              <p style="font-size: 22px; margin: 0;"><b>{{ today_total }}</b></p>
+            </div>
+
+            <div class="card" style="flex:1; margin:0;">
+              <h2>今日淨利</h2>
+              <p style="font-size: 22px; margin: 0;"><b>{{ today_net }}</b></p>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- 第二排：總票面 / 總票面(餘) -->
+        <div id="faceTotalCard" class="is-hidden">
+          <div style="display:flex; gap:14px; align-items:stretch;">
+            <div class="card" style="flex:1; margin:0;">
+              <h2>總票面</h2>
+              <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value }}</b></p>
+            </div>
+
+            <div class="card" style="flex:1; margin:0;">
+              <h2>總票面(餘)</h2>
+              <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value_left }}</b></p>
+            </div>
+          </div>
+        </div>
+
 
 
         <div class="card is-hidden" id="expenseCard">
@@ -365,6 +393,8 @@
     document.addEventListener('DOMContentLoaded', () => {
       initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
       initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
+      initToggle('todayCard', 'btnToggleToday', '💰 顯示今日實收/淨利', '💰 隱藏今日實收/淨利');
+      initToggle('faceTotalCard', 'btnToggleFaceTotal', '🎟️ 顯示總票面/票面(餘)', '🎟️ 隱藏總票面/票面(餘)');
     });
 
     function initToggle(cardId, btnId, showText, hideText) {
