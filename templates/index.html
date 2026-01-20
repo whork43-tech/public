@@ -112,6 +112,16 @@
             <button type="button" class="seg-btn" id="btnToggleExpense" onclick="toggleSection('expenseCard', this)">
               💸 顯示今日開銷
             </button>
+
+            <button type="button" class="seg-btn" id="btnToggleToday" onclick="toggleSection('todayCard', this)">
+              💰 顯示今日實收/淨利
+            </button>
+
+            <button type="button" class="seg-btn" id="btnToggleFaceTotal"
+              onclick="toggleSection('faceTotalCard', this)">
+              🎟️ 顯示總票面/票面(餘)
+            </button>
+
           </div>
         </div>
 
@@ -247,18 +257,6 @@
       <!-- 右邊：通知 -->
       <div class="side">
 
-        <div class="card" style="text-align:center; margin-bottom:14px;">
-          <div class="seg">
-            <button type="button" class="seg-btn" id="btnToggleToday" onclick="toggleSection('todayCard', this)">
-              💰 顯示今日實收/淨利
-            </button>
-
-            <button type="button" class="seg-btn" id="btnToggleFaceTotal"
-              onclick="toggleSection('faceTotalCard', this)">
-              🎟️ 顯示總票面/票面(餘)
-            </button>
-          </div>
-        </div>
 
         <!-- 第一排：今日實收 / 今日淨利 -->
         <div id="todayCard" class="is-hidden">
