@@ -658,6 +658,17 @@ def change_password_page(request: Request):
     )
 
 
+@app.get("/change_name")
+def change_name_page(request: Request):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/", status_code=303)
+
+    return templates.TemplateResponse(
+        "change_name.html", {"request": request, "user": user}
+    )
+
+
 @app.get("/")
 def home(request: Request):
     init_db()
@@ -865,6 +876,35 @@ def change_password(
     )
 
 
+@app.post("/change_name")
+def change_name_save(request: Request, display_name: str = Form(...)):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse("/", status_code=303)
+
+    display_name = display_name.strip()
+    if not display_name:
+        return RedirectResponse("/change_name", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET display_name = {PH} WHERE id = {PH}",
+                (display_name, user["user_id"]),
+            )
+        conn.commit()
+
+    resp = RedirectResponse("/?paid_msg=名稱已更新", status_code=303)
+
+    # 🔑 更新 session，讓首頁馬上顯示新名稱
+    return set_session_cookie(
+        resp,
+        user_id=user["user_id"],
+        username=user["username"],
+        display_name=display_name,
+    )
+
+
 @app.post("/add")
 def add_record(
     request: Request,
@@ -965,7 +1005,44 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-        conn.commit()
+                conn.commit()
+
+            # ===== 新增後：勾選算入今日實收 =====
+            if count_today_b:
+                created_date_obj = date.fromisoformat(created_date)
+                current_day = calc_current_day(created_date_obj)
+
+                with get_conn() as conn:
+                    with get_cursor(conn) as cur:
+                        # ① 今日實收加一期
+                        cur.execute(
+                            f"""
+                            INSERT INTO payments (paid_at, amount, record_id, user_id)
+                            VALUES ({PH}, {PH}, {PH}, {PH})
+                            """,
+                            (
+                                today_str(),
+                                int(amount),
+                                record_id,
+                                user["user_id"],
+                            ),
+                        )
+
+                        # ② 同步期數與最後繳款日
+                        cur.execute(
+                            f"""
+                            UPDATE records
+                            SET paid_count = paid_count + 1,
+                            last_paid_day = {PH}
+                            WHERE id = {PH}
+                            """,
+                            (
+                                current_day,
+                                record_id,
+                            ),
+                        )
+
+                    conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
