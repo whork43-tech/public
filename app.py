@@ -755,9 +755,7 @@ def home(request: Request):
         )
 
     # ✅ 收費/試用：未開通或試用到期 -> 鎖首頁功能
-    access_ok, access_msg, access_until, access_mode = get_access_status(
-        user["user_id"]
-    )
+    access_ok, access_msg, access_until, access_mode = get_access_status(user["user_id"])
     if not access_ok:
         return templates.TemplateResponse(
             "index.html",
@@ -1028,8 +1026,6 @@ def add_record(
     # ✅ 勾「票」：扣票面餘（注意：用 use_face_value_b，不是用支出勾選）
     ticket_offset = int(amount or 0) if use_face_value_b else 0
 
-    expense_amount = int(total_amount or 0)
-
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             # 先寫 records，拿 record_id
@@ -1081,58 +1077,6 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-            # ✅ 2) 新增資料時：把「支出金額(total_amount)」寫進每日開銷
-            if expense_amount > 0:
-                cur.execute(
-                    f"""
-                    INSERT INTO expenses (spent_at, item, amount, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH})
-                    """,
-                    (
-                        today_str(),
-                        name,  # ✅ 顯示名稱即可（你要的）
-                        expense_amount,  # ✅ 顯示金額即可（你要的）
-                        user["user_id"],
-                    ),
-                )
-
-            # ===== 新增後：勾選算入今日實收 =====
-            if count_today_b:
-                created_date_obj = date.fromisoformat(created_date)
-                current_day = calc_current_day(created_date_obj)
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            # ① 今日實收加一期（一定要寫 record_name）
-            cur.execute(
-                f"""
-                INSERT INTO payments
-                (paid_at, amount, record_id, record_name, user_id)
-                VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
-                """,
-                (
-                    today_str(),
-                    int(amount),
-                    record_id,
-                    name,  # ✅ 這行是關鍵
-                    user["user_id"],
-                ),
-            )
-
-            # ② 同步期數與最後繳款日
-            cur.execute(
-                f"""
-                UPDATE records
-                SET paid_count = paid_count + 1,
-                    last_paid_day = {PH}
-                WHERE id = {PH}
-                """,
-                (
-                    current_day,
-                    record_id,
-                ),
-            )
-
         conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
@@ -1168,11 +1112,13 @@ def admin_users(request: Request):
     if not admin:
         return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
 
+    msg = request.query_params.get("msg", "")
+
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
                 """
-                SELECT id, username, activated_at
+                SELECT id, username, display_name, activated_at
                 FROM users
                 ORDER BY id DESC
             """
@@ -1186,6 +1132,7 @@ def admin_users(request: Request):
                 {
                     "id": int(r["id"]),
                     "username": r["username"],
+                    "display_name": r["display_name"],
                     "activated_at": r["activated_at"],
                 }
             )
@@ -1195,13 +1142,14 @@ def admin_users(request: Request):
                 {
                     "id": int(r[0]),
                     "username": r[1],
-                    "activated_at": r[2],
+                    "display_name": r[2],
+                    "activated_at": r[3],
                 }
             )
 
     return templates.TemplateResponse(
         "admin_users.html",
-        {"request": request, "user": admin, "users": users},
+        {"request": request, "user": admin, "users": users, "msg": msg},
     )
 
 
@@ -1216,6 +1164,8 @@ def admin_users_activate(
     admin = require_admin(request)
     if not admin:
         return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    msg = request.query_params.get("msg", "")
 
     # 清除開通時間
     if clear == "1":
@@ -1245,6 +1195,104 @@ def admin_users_activate(
         conn.commit()
 
     return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.post("/admin/users/create")
+def admin_users_create(
+    request: Request,
+    display_name: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    msg = request.query_params.get("msg", "")
+
+    display_name = (display_name or "").strip()
+    username = (username or "").strip()
+    password = (password or "").strip()
+
+    if not display_name or not username or not password:
+        return RedirectResponse(
+            "/admin/users?msg=" + quote("請填：名稱 / 帳號 / 密碼"), status_code=303
+        )
+
+    if len(password) < 6:
+        return RedirectResponse(
+            "/admin/users?msg=" + quote("密碼至少 6 碼"), status_code=303
+        )
+
+    # ✅ 7 天免費試用
+    from datetime import timedelta
+
+    trial_until = (date.fromisoformat(today_str()) + timedelta(days=7)).isoformat()
+    pw_hash = hash_password(password)
+
+    try:
+        with get_conn() as conn:
+            with get_cursor(conn) as cur:
+                if IS_SQLITE:
+                    cur.execute(
+                        "INSERT INTO users (username, password_hash, display_name, trial_until) VALUES (?, ?, ?, ?)",
+                        (username, pw_hash, display_name, trial_until),
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO users (username, password_hash, display_name, trial_until) VALUES (%s, %s, %s, %s)",
+                        (username, pw_hash, display_name, trial_until),
+                    )
+            conn.commit()
+    except Exception:
+        return RedirectResponse(
+            "/admin/users?msg=" + quote("建立失敗：帳號可能已存在"), status_code=303
+        )
+
+    return RedirectResponse(
+        "/admin/users?msg=" + quote("已新增帳號"), status_code=303
+    )
+
+
+@app.post("/admin/users/delete")
+def admin_users_delete(
+    request: Request,
+    user_id: int = Form(...),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    msg = request.query_params.get("msg", "")
+
+    # 防止刪到自己
+    if int(user_id) == int(admin.get("user_id")):
+        return RedirectResponse(
+            "/admin/users?msg=" + quote("不能刪除自己的帳號"), status_code=303
+        )
+
+    # 防止刪除管理員帳號（用 username 判斷）
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"SELECT username FROM users WHERE id = {PH}", (user_id,))
+            row = cur.fetchone()
+            target_username = row[0] if (row and not isinstance(row, sqlite3.Row)) else (row["username"] if row else "")
+
+    if ADMIN_USERNAME and target_username == ADMIN_USERNAME:
+        return RedirectResponse(
+            "/admin/users?msg=" + quote("不能刪除管理員帳號"), status_code=303
+        )
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"DELETE FROM users WHERE id = {PH}", (user_id,))
+        conn.commit()
+
+    return RedirectResponse(
+        "/admin/users?msg=" + quote("已刪除帳號"), status_code=303
+    )
 
 
 @app.post("/history/delete")
