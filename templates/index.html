@@ -45,17 +45,182 @@
     .is-hidden {
       display: none !important;
     }
+
+    /* ===== UI Theme Upgrade ===== */
+    :root {
+      --bg1: #f7f9fc;
+      --bg2: #eef3ff;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: rgba(17, 24, 39, .08);
+      --shadow: 0 10px 30px rgba(17, 24, 39, .08);
+      --shadow2: 0 6px 16px rgba(17, 24, 39, .06);
+      --radius: 16px;
+    }
+
+    body {
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 20% 0%, var(--bg2), transparent 60%),
+        radial-gradient(900px 500px at 80% 10%, #ffe7f0, transparent 55%),
+        linear-gradient(180deg, var(--bg1), #ffffff 60%);
+    }
+
+    .container {
+      max-width: 1100px;
+      /* 讓畫面更不擁擠 */
+    }
+
+    h1 {
+      margin: 18px 0 6px;
+      letter-spacing: .5px;
+    }
+
+    /* 標題下副標語 */
+    .tagline {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow2);
+      backdrop-filter: blur(6px);
+    }
+
+    /* 讓主要區塊更有層次 */
+    .layout {
+      gap: 16px;
+    }
+
+    /* 右側通知欄不要太窄 */
+    .side {
+      min-width: 320px;
+    }
+
+    /* Segmented buttons 更像系統 */
+    .seg {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .seg-btn {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(17, 24, 39, .06);
+      transition: .15s;
+    }
+
+    .seg-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(17, 24, 39, .10);
+    }
+
+    .seg-btn.active {
+      border-color: rgba(59, 130, 246, .25);
+      box-shadow: 0 10px 22px rgba(59, 130, 246, .12);
+    }
+
+    /* 表單更好看 */
+    input[type="text"],
+    input[type="password"],
+    input[type="number"] {
+      border-radius: 12px !important;
+      border: 1px solid rgba(17, 24, 39, .12) !important;
+      padding: 10px 12px !important;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: rgba(59, 130, 246, .5) !important;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, .12);
+    }
+
+    /* 列表 row 更清楚 */
+    .row {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: #fff;
+      box-shadow: 0 8px 18px rgba(17, 24, 39, .06);
+    }
+
+    .row .title {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .meta {
+      color: var(--muted);
+    }
+
+    /* 帳戶狀態卡更像提示條 */
+    .statusbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(17, 24, 39, .02);
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .pill b {
+      color: var(--text);
+    }
+
+    .pill.trial {
+      background: rgba(245, 158, 11, .10);
+      border-color: rgba(245, 158, 11, .20);
+    }
+
+    .pill.ok {
+      background: rgba(16, 185, 129, .10);
+      border-color: rgba(16, 185, 129, .20);
+    }
+
+    .pill.bad {
+      background: rgba(220, 38, 38, .10);
+      border-color: rgba(220, 38, 38, .20);
+    }
+
+    /* paid_msg 更像提醒 */
+    .notice-card {
+      border-left: 6px solid rgba(59, 130, 246, .35);
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
     <h1>分期借款管理平台</h1>
+    <p class="tagline">讓每一筆分期，都清楚可控</p>
 
     {% if paid_msg %}
-    <div class="card">
+    <div class="card notice-card">
       <p><b>{{ paid_msg }}</b></p>
     </div>
+
     {% endif %}
 
     <!-- ✅ 未登入：只顯示登入/註冊，不渲染任何資料區 -->
@@ -106,25 +271,20 @@
         </form>
       </div>
     </div>
+
+
     <!-- 🔐 帳戶狀態（試用 / 已開通 / 到期） -->
-    <div class="card" style="margin-top:10px;">
+    <div class="card statusbar" style="margin-top:10px;">
       {% if access_mode == "trial" %}
-      <p style="margin:0;">
-        🧪 <b>試用中</b>｜
-        試用到期日：<b>{{ access_until }}</b>
-      </p>
+      <span class="pill trial">🧪 <b>試用中</b>｜到期日：<b>{{ access_until }}</b></span>
+      <span class="pill">需要延長？請聯絡 LINE：<b>@826ynmlh</b></span>
 
       {% elif access_mode == "activated" %}
-      <p style="margin:0;">
-        ✅ <b>已開通</b>｜
-        到期日：<b>{{ access_until }}</b>
-      </p>
+      <span class="pill ok">✅ <b>已開通</b>｜到期日：<b>{{ access_until }}</b></span>
+      <span class="pill">到期可續費延長（LINE：<b>@826ynmlh</b>）</span>
 
       {% else %}
-      <p style="margin:0; color:#dc2626;">
-        ⛔ <b>試用期已結束</b>｜
-        請聯絡管理員 LINE：@826ynmlh
-      </p>
+      <span class="pill bad">⛔ <b>試用期已結束</b>｜請聯絡 LINE：<b>@826ynmlh</b></span>
       {% endif %}
     </div>
 
