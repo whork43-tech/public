@@ -151,6 +151,9 @@ def init_db():
                 if not _sqlite_has_column(cur, "users", "activated_at"):
                     cur.execute("ALTER TABLE users ADD COLUMN activated_at TEXT")
 
+                if not _sqlite_has_column(cur, "users", "display_name"):
+                    cur.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+
             else:
                 cur.execute(
                     """
@@ -168,6 +171,13 @@ def init_db():
                 ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS activated_at TEXT
                 """
+                )
+
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS display_name TEXT
+"""
                 )
 
             # ========== RECORDS ==========
@@ -273,8 +283,12 @@ def verify_password(password: str, password_hash: str) -> bool:
 # ======================
 # Session / Auth
 # ======================
-def set_session_cookie(resp: RedirectResponse, user_id: int, username: str):
-    token = serializer.dumps({"user_id": user_id, "username": username})
+def set_session_cookie(
+    resp: RedirectResponse, user_id: int, username: str, display_name: str | None = None
+):
+    token = serializer.dumps(
+        {"user_id": user_id, "username": username, "display_name": display_name or ""}
+    )
     resp.set_cookie("session", token, httponly=True, samesite="lax")
     return resp
 
@@ -631,6 +645,19 @@ def login_page():
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.get("/change_password")
+def change_password_page(request: Request):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+
+    msg = request.query_params.get("msg", "")
+    return templates.TemplateResponse(
+        "change_password.html",
+        {"request": request, "user": user, "msg": msg},
+    )
+
+
 @app.get("/")
 def home(request: Request):
     init_db()
@@ -711,7 +738,9 @@ def add_page(request: Request):
 
 
 @app.post("/register")
-def register(username: str = Form(...), password: str = Form(...)):
+def register(
+    username: str = Form(...), password: str = Form(...), display_name: str = Form(...)
+):
     init_db()
     pw_hash = hash_password(password)
 
@@ -721,13 +750,13 @@ def register(username: str = Form(...), password: str = Form(...)):
                 if IS_SQLITE:
                     cur.execute(
                         "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                        (username, pw_hash),
+                        (username, pw_hash, display_name),
                     )
                     user_id = cur.lastrowid
                 else:
                     cur.execute(
                         "INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id",
-                        (username, pw_hash),
+                        (username, pw_hash, display_name),
                     )
                     user_id = cur.fetchone()[0]
             conn.commit()
@@ -739,7 +768,12 @@ def register(username: str = Form(...), password: str = Form(...)):
     resp = RedirectResponse(
         url="/?paid_msg=" + quote("註冊成功，已登入"), status_code=303
     )
-    return set_session_cookie(resp, user_id=int(user_id), username=username)
+    return set_session_cookie(
+        resp,
+        user_id=int(user_id),
+        username=username,
+        display_name=display_name,
+    )
 
 
 @app.post("/login")
@@ -749,9 +783,10 @@ def login(username: str = Form(...), password: str = Form(...)):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
-                f"SELECT id, password_hash FROM users WHERE username = {PH}",
+                f"SELECT id, password_hash, display_name FROM users WHERE username = {PH}",
                 (username,),
             )
+
             row = cur.fetchone()
 
     if not row:
@@ -761,18 +796,73 @@ def login(username: str = Form(...), password: str = Form(...)):
 
     user_id = row["id"] if isinstance(row, sqlite3.Row) else row[0]
     pw_hash = row["password_hash"] if isinstance(row, sqlite3.Row) else row[1]
+    display_name = row["display_name"] if isinstance(row, sqlite3.Row) else row[2]
 
     if not verify_password(password, pw_hash):
         return RedirectResponse(url="/?paid_msg=" + quote("密碼錯誤"), status_code=303)
 
     resp = RedirectResponse(url="/?paid_msg=" + quote("登入成功"), status_code=303)
-    return set_session_cookie(resp, user_id=int(user_id), username=username)
+    return set_session_cookie(
+        resp, user_id=int(user_id), username=username, display_name=display_name
+    )
 
 
 @app.post("/logout")
 def logout():
     resp = RedirectResponse(url="/?paid_msg=" + quote("已登出"), status_code=303)
     return clear_session_cookie(resp)
+
+
+@app.post("/change_password")
+def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    new_password2: str = Form(...),
+):
+    user = require_login(request)
+    if not user:
+        return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+
+    if new_password != new_password2:
+        return RedirectResponse(
+            url="/change_password?msg=" + quote("兩次新密碼不一致"), status_code=303
+        )
+
+    if len(new_password) < 6:
+        return RedirectResponse(
+            url="/change_password?msg=" + quote("新密碼至少 6 碼"), status_code=303
+        )
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT password_hash FROM users WHERE id = {PH}",
+                (user["user_id"],),
+            )
+            row = cur.fetchone()
+
+            if not row:
+                return RedirectResponse(
+                    url="/change_password?msg=" + quote("找不到帳號"), status_code=303
+                )
+
+            pw_hash = row["password_hash"] if isinstance(row, sqlite3.Row) else row[0]
+
+            if not verify_password(current_password, pw_hash):
+                return RedirectResponse(
+                    url="/change_password?msg=" + quote("目前密碼錯誤"), status_code=303
+                )
+
+            cur.execute(
+                f"UPDATE users SET password_hash = {PH} WHERE id = {PH}",
+                (hash_password(new_password), user["user_id"]),
+            )
+        conn.commit()
+
+    return RedirectResponse(
+        url="/change_password?msg=" + quote("密碼更新成功"), status_code=303
+    )
 
 
 @app.post("/add")
