@@ -154,6 +154,9 @@ def init_db():
                 if not _sqlite_has_column(cur, "users", "display_name"):
                     cur.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
 
+                if not _sqlite_has_column(cur, "users", "trial_until"):
+                    cur.execute("ALTER TABLE users ADD COLUMN trial_until TEXT")
+
             else:
                 cur.execute(
                     """
@@ -177,6 +180,13 @@ def init_db():
                     """
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS display_name TEXT
+"""
+                )
+
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS trial_until TEXT
 """
                 )
 
@@ -281,6 +291,65 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 # ======================
+# Billing / Access control
+# ======================
+
+
+def _parse_iso_date(s: str | None):
+    s = (s or "").strip()
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def get_access_status(user_id: int):
+    """
+    回傳 (ok, msg, until, mode)
+    mode: activated | trial | expired
+    """
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT activated_at, trial_until FROM users WHERE id = {PH}",
+                (user_id,),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return (False, "帳號不存在", None, "expired")
+
+    if isinstance(row, sqlite3.Row):
+        activated_at = row["activated_at"]
+        trial_until = row["trial_until"]
+    else:
+        activated_at = row[0]
+        trial_until = row[1]
+
+    today = date.fromisoformat(today_str())
+    act = _parse_iso_date(activated_at)
+    tr = _parse_iso_date(trial_until)
+
+    # ✅ 已開通（優先）
+    if act and today <= act:
+        return (True, "", act, "activated")
+
+    # ✅ 試用期內（尚未開通）
+    if (not act) and tr and today <= tr:
+        return (True, "", tr, "trial")
+
+    # ✅ 未開通或已到期
+    return (
+        False,
+        "試用期結束.請與管理員聯絡LINE:@826ynmlh",
+        None,
+        "expired",
+    )
+
+
+# ======================
 # Session / Auth
 # ======================
 def set_session_cookie(
@@ -315,6 +384,18 @@ def require_login(request: Request):
         return None
     if not isinstance(user.get("user_id"), int):
         return None
+    return user
+
+
+def require_active(request: Request):
+    user = require_login(request)
+    if not user:
+        return None
+
+    ok, msg, _, _ = get_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse(url="/?paid_msg=" + quote(msg), status_code=303)
+
     return user
 
 
@@ -647,25 +728,16 @@ def login_page():
 
 @app.get("/change_password")
 def change_password_page(request: Request):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     msg = request.query_params.get("msg", "")
     return templates.TemplateResponse(
         "change_password.html",
         {"request": request, "user": user, "msg": msg},
-    )
-
-
-@app.get("/change_name")
-def change_name_page(request: Request):
-    user = require_login(request)
-    if not user:
-        return RedirectResponse("/", status_code=303)
-
-    return templates.TemplateResponse(
-        "change_name.html", {"request": request, "user": user}
     )
 
 
@@ -680,6 +752,23 @@ def home(request: Request):
     if not user:
         return templates.TemplateResponse(
             "index.html", {"request": request, "user": None, "paid_msg": paid_msg}
+        )
+
+    # ✅ 收費/試用：未開通或試用到期 -> 鎖首頁功能
+    access_ok, access_msg, access_until, access_mode = get_access_status(
+        user["user_id"]
+    )
+    if not access_ok:
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "user": user,
+                "paid_msg": access_msg or paid_msg,
+                "access_ok": False,
+                "access_until": None,
+                "access_mode": access_mode,
+            },
         )
 
     # ✅ 取出該使用者所有分期資料
@@ -723,6 +812,9 @@ def home(request: Request):
             "request": request,
             "user": user,
             "paid_msg": paid_msg,
+            "access_ok": True,
+            "access_until": (access_until.isoformat() if access_until else ""),
+            "access_mode": access_mode,
             "paid_id": paid_id,
             "rows": rows,
             "today_due_records": today_due_records,
@@ -741,9 +833,11 @@ def home(request: Request):
 
 @app.get("/add")
 def add_page(request: Request):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     return templates.TemplateResponse("add.html", {"request": request, "user": user})
 
@@ -755,19 +849,24 @@ def register(
     init_db()
     pw_hash = hash_password(password)
 
+    # ✅ 7 天免費試用
+    from datetime import timedelta
+
+    trial_until = (date.fromisoformat(today_str()) + timedelta(days=7)).isoformat()
+
     try:
         with get_conn() as conn:
             with get_cursor(conn) as cur:
                 if IS_SQLITE:
                     cur.execute(
-                        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                        (username, pw_hash, display_name),
+                        "INSERT INTO users (username, password_hash, display_name, trial_until) VALUES (?, ?, ?, ?)",
+                        (username, pw_hash, display_name, trial_until),
                     )
                     user_id = cur.lastrowid
                 else:
                     cur.execute(
-                        "INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id",
-                        (username, pw_hash, display_name),
+                        "INSERT INTO users (username, password_hash, display_name, trial_until) VALUES (%s, %s, %s, %s) RETURNING id",
+                        (username, pw_hash, display_name, trial_until),
                     )
                     user_id = cur.fetchone()[0]
             conn.commit()
@@ -831,9 +930,11 @@ def change_password(
     new_password: str = Form(...),
     new_password2: str = Form(...),
 ):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     if new_password != new_password2:
         return RedirectResponse(
@@ -876,35 +977,6 @@ def change_password(
     )
 
 
-@app.post("/change_name")
-def change_name_save(request: Request, display_name: str = Form(...)):
-    user = require_login(request)
-    if not user:
-        return RedirectResponse("/", status_code=303)
-
-    display_name = display_name.strip()
-    if not display_name:
-        return RedirectResponse("/change_name", status_code=303)
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"UPDATE users SET display_name = {PH} WHERE id = {PH}",
-                (display_name, user["user_id"]),
-            )
-        conn.commit()
-
-    resp = RedirectResponse("/?paid_msg=名稱已更新", status_code=303)
-
-    # 🔑 更新 session，讓首頁馬上顯示新名稱
-    return set_session_cookie(
-        resp,
-        user_id=user["user_id"],
-        username=user["username"],
-        display_name=display_name,
-    )
-
-
 @app.post("/add")
 def add_record(
     request: Request,
@@ -921,9 +993,11 @@ def add_record(
     count_today: str | None = Form(None),
     ticket_deduct_one: str | None = Form(None),
 ):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     init_db()
 
@@ -1005,53 +1079,55 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-                conn.commit()
-
             # ===== 新增後：勾選算入今日實收 =====
             if count_today_b:
                 created_date_obj = date.fromisoformat(created_date)
                 current_day = calc_current_day(created_date_obj)
 
-                with get_conn() as conn:
-                    with get_cursor(conn) as cur:
-                        # ① 今日實收加一期
-                        cur.execute(
-                            f"""
-                            INSERT INTO payments (paid_at, amount, record_id, user_id)
-                            VALUES ({PH}, {PH}, {PH}, {PH})
-                            """,
-                            (
-                                today_str(),
-                                int(amount),
-                                record_id,
-                                user["user_id"],
-                            ),
-                        )
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # ① 今日實收加一期（一定要寫 record_name）
+            cur.execute(
+                f"""
+                INSERT INTO payments
+                (paid_at, amount, record_id, record_name, user_id)
+                VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
+                """,
+                (
+                    today_str(),
+                    int(amount),
+                    record_id,
+                    name,  # ✅ 這行是關鍵
+                    user["user_id"],
+                ),
+            )
 
-                        # ② 同步期數與最後繳款日
-                        cur.execute(
-                            f"""
-                            UPDATE records
-                            SET paid_count = paid_count + 1,
-                            last_paid_day = {PH}
-                            WHERE id = {PH}
-                            """,
-                            (
-                                current_day,
-                                record_id,
-                            ),
-                        )
+            # ② 同步期數與最後繳款日
+            cur.execute(
+                f"""
+                UPDATE records
+                SET paid_count = paid_count + 1,
+                    last_paid_day = {PH}
+                WHERE id = {PH}
+                """,
+                (
+                    current_day,
+                    record_id,
+                ),
+            )
 
-                    conn.commit()
+        conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
 
 @app.get("/history")
 def history(request: Request):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     init_db()
     groups = get_history_grouped(user["user_id"])
@@ -1157,9 +1233,11 @@ def admin_users_activate(
 @app.post("/history/delete")
 def delete_payment(request: Request, payment_id: int = Form(...)):
     init_db()
-    user = get_current_user(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -1177,18 +1255,22 @@ def delete_payment(request: Request, payment_id: int = Form(...)):
 
 @app.get("/add-page")
 def add_page_2(request: Request):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     return templates.TemplateResponse("add.html", {"request": request, "user": user})
 
 
 @app.get("/expense-page")
 def expense_page(request: Request):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     return templates.TemplateResponse(
         "expense_add.html", {"request": request, "user": user}
@@ -1201,9 +1283,11 @@ def add_expense(
     item: list[str] = Form([]),
     amount: list[str] = Form([]),
 ):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse(url="/", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     init_db()
 
@@ -1250,9 +1334,11 @@ def add_expense(
 
 @app.get("/expense/edit/{expense_id}")
 def expense_edit_page(request: Request, expense_id: int):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     init_db()
     with get_conn() as conn:
@@ -1281,9 +1367,11 @@ def delete_expenses_multiple(
     request: Request,
     expense_ids: list[str] = Form([]),
 ):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     init_db()
 
@@ -1323,9 +1411,11 @@ def expense_edit_save(
     item: str = Form(...),
     amount: int = Form(...),
 ):
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     init_db()
     item = (item or "").strip()
@@ -1359,9 +1449,11 @@ def pay_record(
     periods: str = Form("1"),  # 右邊逾期補繳會傳 periods；今日已繳款沒傳就預設 1
 ):
     init_db()
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     # 防呆
     try:
@@ -1429,9 +1521,11 @@ def pay_record(
 @app.post("/settle/{record_id}")
 def settle_record(request: Request, record_id: int, amount: int = Form(...)):
     init_db()
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     if amount <= 0:
         return RedirectResponse("/", status_code=303)
@@ -1474,9 +1568,11 @@ def settle_record(request: Request, record_id: int, amount: int = Form(...)):
 @app.post("/history/delete-multiple")
 def delete_payments_multiple(request: Request, payment_ids: list[str] = Form([])):
     init_db()
-    user = get_current_user(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     # ✅ 轉 int（避免 FastAPI 解析 list[int] 時炸）
     _ids = []
@@ -1507,9 +1603,11 @@ def delete_payments_multiple(request: Request, payment_ids: list[str] = Form([])
 @app.post("/delete/{record_id}")
 def delete_record(request: Request, record_id: int):
     init_db()
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -1526,9 +1624,11 @@ def delete_record(request: Request, record_id: int):
 @app.post("/delete-multiple")
 def delete_multiple(request: Request, record_ids: list[str] = Form([])):
     init_db()
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     ids: list[int] = []
     for x in record_ids or []:
@@ -1562,9 +1662,11 @@ def delete_multiple(request: Request, record_ids: list[str] = Form([])):
 @app.get("/edit/{record_id}")
 def edit_page(request: Request, record_id: int):
     init_db()
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -1601,9 +1703,11 @@ def edit_save(
     interval_days: int = Form(...),
 ):
     init_db()
-    user = require_login(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if isinstance(user, RedirectResponse):
+        return user
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
