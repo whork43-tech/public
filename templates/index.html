@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>分期記帳</title>
+  <title>分期借款管理平台</title>
   <link rel="stylesheet" href="/static/style.css?v=1002">
 
   <style>
@@ -47,7 +47,7 @@
 
 <body>
   <div class="container">
-    <h1>分期記帳</h1>
+    <h1>分期借款管理平台</h1>
 
     {% if paid_msg %}
     <div class="card">
@@ -129,22 +129,16 @@
 
         <!-- ✅ 目前資料 -->
         <div class="card is-hidden" id="currentCard">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
             <h2 style="margin:0;">目前資料</h2>
-            <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
-          </div>
-          {% if rows|length == 0 %}
-          <p class="muted">目前沒有資料</p>
-          {% else %}
-          <form id="bulkForm" action="/delete-multiple" method="post" style="margin:0;">
-            <div id="bulkBar">
-              <label style="display:flex; align-items:center; gap:6px;">
-                <input id="bulkSelectAll" type="checkbox" onclick="toggleSelectAll(this)"> 全選
-              </label>
-              <button type="submit" class="btn danger" onclick="return confirmBulkDelete();">
-                確認刪除勾選
-              </button>
+
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <input id="currentSearch" type="text" placeholder="搜尋名稱…"
+                style="padding:9px 12px; border:1px solid #ddd; border-radius:10px; min-width:180px;">
+              <button type="button" class="btn danger" onclick="toggleBulkMode()">刪除多筆</button>
             </div>
+          </div>
+
           </form>
 
           <div class="list" style="max-height: 420px; overflow-y: auto; padding-right: 6px;">
@@ -160,7 +154,7 @@
             </div>
             {% endif %}
 
-            <div class="row">
+            <div class="row" data-name="{{ r.name|lower }}">
               <div class="bulkBox">
                 <input type="checkbox" name="record_ids" value="{{ r.id }}" form="bulkForm">
               </div>
@@ -169,7 +163,6 @@
                 <div class="meta">
                   {% set paid_sum = r.paid_sum if r.paid_sum is defined else 0 %}
                   {% set ticket_offset = r.ticket_offset if r.ticket_offset is defined else 0 %}
-                  {% set paid_sum = r.paid_sum if r.paid_sum is defined else 0 %}
                   {% set face_left = r.face_value - ticket_offset - paid_sum %}
                   {% set expense_offset = r.expense_offset if r.expense_offset is defined else 0 %}
                   {% set spend_left = (r.total_amount - paid_sum - expense_offset) %}
@@ -294,21 +287,28 @@
         <div class="card is-hidden" id="expenseCard">
           <h2>今日開銷</h2>
 
-          <form method="post" action="/expense/delete-multiple" id="expenseBulkForm">
-            <div style="margin-bottom:8px;">
-              <button type="submit" class="btn danger" onclick="return confirm('確定要刪除勾選的開銷？');">
-                刪除勾選
-              </button>
-            </div>
+          <div
+            style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:6px;">
+              <input id="expenseSelectAll" type="checkbox" onclick="toggleExpenseAll(this)"> 全選
+            </label>
 
-            <ul>
-              {% for e in today_expenses %}
-              <li style="display:flex; align-items:center; gap:8px;">
-                <input type="checkbox" name="expense_ids" value="{{ e.id }}">
-                <span>• {{ e.item }}：{{ e.amount }}</span>
-              </li>
-              {% endfor %}
-            </ul>
+            <div class="muted" id="expensePicked">已勾選 0 筆</div>
+
+            <button type="submit" class="btn danger" onclick="return confirmExpenseBulk();">
+              刪除勾選
+            </button>
+          </div>
+
+
+          <ul>
+            {% for e in today_expenses %}
+            <li style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" name="expense_ids" value="{{ e.id }}">
+              <span>• {{ e.item }}：{{ e.amount }}</span>
+            </li>
+            {% endfor %}
+          </ul>
           </form>
         </div>
 
@@ -364,7 +364,8 @@
                 overdue_periods }} 期） <form action="/pay/{{ r.id }}" method="post"
                 style="display:inline-flex; align-items:center; gap:6px;">
                 (
-                <input type="number" name="periods" min="1" style="width:60px; padding:4px;" placeholder="期數" required>
+                <input type="number" name="periods" min="1" value="1" style="width:60px; padding:4px;" placeholder="期數"
+                  required>
                 )
                 <button class="btn" type="submit">補繳</button>
                 </form>
@@ -381,66 +382,97 @@
 
     </div>
 
-    <!-- 取消彈跳通知視窗（不再 alert） -->
-
-    {% endif %}
-  </div>
 
 
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
-      initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
-      initToggle('todayCard', 'btnToggleToday', '💰 顯示今日實收/淨利', '💰 隱藏今日實收/淨利');
-      initToggle('faceTotalCard', 'btnToggleFaceTotal', '🎟️ 顯示總票面/票面(餘)', '🎟️ 隱藏總票面/票面(餘)');
-    });
 
-    function initToggle(cardId, btnId, showText, hideText) {
-      const el = document.getElementById(cardId);
-      const btn = document.getElementById(btnId);
-      if (!el || !btn) return;
-      const hidden = el.classList.contains('is-hidden');
-      btn.textContent = hidden ? showText : hideText;
-      btn.classList.toggle('active', !hidden);
-    }
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        initToggle('currentCard', 'btnToggleCurrent', '📌 顯示目前資料', '📌 隱藏目前資料');
+        initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
+        initToggle('todayCard', 'btnToggleToday', '💰 顯示今日實收/淨利', '💰 隱藏今日實收/淨利');
+        initToggle('faceTotalCard', 'btnToggleFaceTotal', '🎟️ 顯示總票面/票面(餘)', '🎟️ 隱藏總票面/票面(餘)');
+      });
 
-    function toggleSection(id, btn) {
-      const el = document.getElementById(id);
-      if (!el) return;
+      function toggleExpenseAll(master) {
+        document.querySelectorAll('#expenseCard input[name="expense_ids"]').forEach(cb => {
+          cb.checked = master.checked;
+        });
+        updateExpensePicked();
+      }
+      function updateExpensePicked() {
+        const n = document.querySelectorAll('#expenseCard input[name="expense_ids"]:checked').length;
+        const el = document.getElementById('expensePicked');
+        if (el) el.textContent = `已勾選 ${n} 筆`;
+      }
+      function confirmExpenseBulk() {
+        const n = document.querySelectorAll('#expenseCard input[name="expense_ids"]:checked').length;
+        if (n === 0) { alert('請先勾選要刪除的開銷'); return false; }
+        return confirm(`確定要刪除 ${n} 筆開銷嗎？`);
+      }
+      document.querySelectorAll('#expenseCard input[name="expense_ids"]').forEach(cb => {
+        cb.addEventListener('change', updateExpensePicked);
+      });
+      updateExpensePicked();
 
-      el.classList.toggle('is-hidden');
-      const hidden = el.classList.contains('is-hidden');
 
-      if (btn) {
-        if (id === 'currentCard') {
-          btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
-        } else if (id === 'expenseCard') {
-          btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
-        }
+      function initToggle(cardId, btnId, showText, hideText) {
+        const el = document.getElementById(cardId);
+        const btn = document.getElementById(btnId);
+        if (!el || !btn) return;
+        const hidden = el.classList.contains('is-hidden');
+        btn.textContent = hidden ? showText : hideText;
         btn.classList.toggle('active', !hidden);
       }
-    }
 
-    function toggleBulkMode() {
-      const card = document.getElementById('currentCard');
-      card.classList.toggle('bulk-mode');
-      if (!card.classList.contains('bulk-mode')) {
-        document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = false);
-        const all = document.getElementById('bulkSelectAll');
-        if (all) all.checked = false;
+      const currentSearch = document.getElementById('currentSearch');
+      if (currentSearch) {
+        currentSearch.addEventListener('input', () => {
+          const q = (currentSearch.value || '').trim().toLowerCase();
+          document.querySelectorAll('#currentCard .row[data-name]').forEach(row => {
+            const name = row.getAttribute('data-name') || '';
+            row.style.display = (!q || name.includes(q)) ? '' : 'none';
+          });
+        });
       }
-    }
-    function toggleSelectAll(master) {
-      document.querySelectorAll('input[name="record_ids"]').forEach(cb => {
-        cb.checked = master.checked;
-      });
-    }
-    function confirmBulkDelete() {
-      const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
-      if (n === 0) { alert('請先勾選要刪除的資料'); return false; }
-      return confirm(`確定要刪除 ${n} 筆資料嗎？`);
-    }
-  </script>
+
+
+      function toggleSection(id, btn) {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        el.classList.toggle('is-hidden');
+        const hidden = el.classList.contains('is-hidden');
+
+        if (btn) {
+          if (id === 'currentCard') {
+            btn.textContent = hidden ? '📌 顯示目前資料' : '📌 隱藏目前資料';
+          } else if (id === 'expenseCard') {
+            btn.textContent = hidden ? '💸 顯示今日開銷' : '💸 隱藏今日開銷';
+          }
+          btn.classList.toggle('active', !hidden);
+        }
+      }
+
+      function toggleBulkMode() {
+        const card = document.getElementById('currentCard');
+        card.classList.toggle('bulk-mode');
+        if (!card.classList.contains('bulk-mode')) {
+          document.querySelectorAll('input[name="record_ids"]').forEach(cb => cb.checked = false);
+          const all = document.getElementById('bulkSelectAll');
+          if (all) all.checked = false;
+        }
+      }
+      function toggleSelectAll(master) {
+        document.querySelectorAll('input[name="record_ids"]').forEach(cb => {
+          cb.checked = master.checked;
+        });
+      }
+      function confirmBulkDelete() {
+        const n = document.querySelectorAll('input[name="record_ids"]:checked').length;
+        if (n === 0) { alert('請先勾選要刪除的資料'); return false; }
+        return confirm(`確定要刪除 ${n} 筆資料嗎？`);
+      }
+    </script>
 
 
 
