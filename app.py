@@ -670,6 +670,15 @@ def home(request: Request):
         if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
     )
 
+    # ✅ 總票面(餘)：只計未結清資料的「票面餘」總和
+    total_face_value_left = sum(
+        int((r.get("face_value") or 0))
+        - int((r.get("ticket_offset") or 0))
+        - int((r.get("paid_sum") or 0))
+        for r in rows
+        if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
+    )
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -687,6 +696,7 @@ def home(request: Request):
             "today_total": today_total,
             "total_face_value": total_face_value,
             "today_net": today_net,
+            "total_face_value_left": total_face_value_left,
         },
     )
 
@@ -811,8 +821,8 @@ def add_record(
     # ✅ 支出勾選：扣支出餘（而不是票面餘）
     expense_offset = int(amount or 0) if ticket_deduct_one_b else 0
 
-    # ✅ 票面扣除：先不要被「支出」勾選影響（保持 0）
-    ticket_offset = 0
+    # ✅ 勾「票」：扣票面餘（注意：用 use_face_value_b，不是用支出勾選）
+    ticket_offset = int(amount or 0) if use_face_value_b else 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
