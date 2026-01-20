@@ -213,6 +213,13 @@ def init_db():
             """
             )
 
+            cur.execute(
+                """
+            ALTER TABLE records
+            ADD COLUMN IF NOT EXISTS expense_offset INTEGER NOT NULL DEFAULT 0;
+            """
+            )
+
             # ========== PAYMENTS ==========
             cur.execute(
                 """
