@@ -6,8 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>歷史繳款 - 分期記帳</title>
   <link rel="stylesheet" href="/static/style1.css?v=999">
+
   <style>
-    /* 只補歷史頁需要的樣式，不影響其他頁 */
+    /* ===== 只補歷史頁需要的樣式，不影響其他頁 ===== */
     details {
       margin: 0;
     }
@@ -31,6 +32,18 @@
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
       margin: 12px 0;
       font-weight: 800;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .month-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 13px;
+      opacity: .8;
+      font-weight: 700;
     }
 
     .day-thumb {
@@ -42,6 +55,8 @@
       background: #fff;
       border: 1px solid #eee;
       margin: 8px 0;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     .day-total {
@@ -56,7 +71,9 @@
       display: flex;
       gap: 10px;
       align-items: center;
+      justify-content: space-between;
       margin: 8px 0 12px 0;
+      flex-wrap: wrap;
     }
 
     .pay-item {
@@ -65,17 +82,58 @@
       justify-content: space-between;
       gap: 10px;
       padding: 6px 0;
+      flex-wrap: wrap;
     }
 
     .pay-left {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     .muted2 {
       color: #666;
       font-size: 14px;
+    }
+
+    /* 工具列 */
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 10px 0 14px 0;
+    }
+
+    .toolbar input[type="text"] {
+      flex: 1;
+      min-width: 220px;
+      padding: 9px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      outline: none;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      background: #fff;
+      font-size: 13px;
+      user-select: none;
+    }
+
+    .tiny {
+      font-size: 12px;
+      opacity: .75;
+    }
+
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
@@ -84,7 +142,8 @@
   <div class="container">
     <h1>📊 歷史繳款</h1>
 
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+    <div class="card"
+      style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
       <div>目前登入：<b>{{ user.username }}</b></div>
       <a class="btn" href="/">回首頁</a>
     </div>
@@ -95,18 +154,42 @@
     </div>
     {% else %}
 
+    <!-- 工具列 -->
+    <div class="card">
+      <div class="toolbar">
+        <input id="searchInput" type="text" placeholder="搜尋：輸入 日期(YYYY-MM-DD) 或 名稱（即時過濾）">
+
+        <button type="button" class="btn" onclick="toggleAllMonths(true)">📂 展開全部月份</button>
+        <button type="button" class="btn" onclick="toggleAllMonths(false)">📁 收合全部月份</button>
+
+        <button type="button" class="btn" onclick="toggleAllDays(true)">📅 展開全部日期</button>
+        <button type="button" class="btn" onclick="toggleAllDays(false)">🗓️ 收合全部日期</button>
+
+        <span class="tiny" id="countInfo"></span>
+      </div>
+      <div class="tiny">
+        小提示：搜尋只影響畫面顯示，不會刪資料。刪除仍需要你勾選並確認。
+      </div>
+    </div>
+
     {#
     groups: [{date:'YYYY-MM-DD', total:..., payments:[{id,name,amount,period_no?...}]}]
     這裡用 date[:7] 做月份分組
     #}
 
     {% set ns = namespace(month=None, open_month=False) %}
+    {% set month_sum = namespace(income=0, exp=0, net=0, key="") %}
 
     {% for g in groups %}
     {% set m = g.date[:7] %}
 
+    {# 先算這天的開銷與淨利（之後顯示 & 月統計用） #}
+    {% set ex = expense_map.get(g.date) %}
+    {% set exp_total = ex.total if ex else 0 %}
+    {% set net_total = g.total - exp_total %}
+
     {% if ns.month != m %}
-    {# 關閉上一個月份容器 #}
+    {# 先關閉上一個月份：關閉前把月統計塞到 summary 的 data-*（用 JS 顯示也行） #}
     {% if ns.open_month %}
   </div>
   </details>
@@ -114,23 +197,32 @@
 
   {% set ns.month = m %}
   {% set ns.open_month = True %}
+  {% set month_sum.income = 0 %}
+  {% set month_sum.exp = 0 %}
+  {% set month_sum.net = 0 %}
+  {% set month_sum.key = m %}
 
-  <details open>
+  <details class="month-block" data-month="{{ m }}" open>
     <summary class="month-summary">
       <span>📅 {{ m }}</span>
-      <span class="muted2">點我展開/收合</span>
+      <span class="month-meta" id="month-meta-{{ m|replace('-', '') }}">
+        當月統計載入中…
+      </span>
     </summary>
-    <div style="margin: 10px 0 18px 0;">
+    <div class="month-body" style="margin: 10px 0 18px 0;">
       {% endif %}
 
+      {# 月統計累加 #}
+      {% set month_sum.income = month_sum.income + g.total %}
+      {% set month_sum.exp = month_sum.exp + exp_total %}
+      {% set month_sum.net = month_sum.net + net_total %}
+
       {# 每一天：縮圖 -> 點開才看到內容 #}
-      <details>
+      <details class="day-block" data-date="{{ g.date }}" data-month="{{ m }}"
+        data-search="{{ (g.date ~ ' ' ~ (g.payments|map(attribute='name')|join(' ')))|lower }}"
+        data-income="{{ g.total }}" data-exp="{{ exp_total }}" data-net="{{ net_total }}">
         <summary class="day-thumb">
           <span><b>{{ g.date }}</b></span>
-          {% set ex = expense_map.get(g.date) %}
-          {% set exp_total = ex.total if ex else 0 %}
-          {% set net_total = g.total - exp_total %}
-
           <span class="day-total">
             總收：{{ g.total }}　
             總開銷：{{ exp_total }}　
@@ -145,6 +237,9 @@
               <label style="display:flex; align-items:center; gap:6px;">
                 <input type="checkbox" onclick="toggleSelectAllDay('{{ g.date|replace('-', '') }}', this)"> 全選
               </label>
+
+              <div class="tiny" id="picked-{{ g.date|replace('-', '') }}">已勾選 0 筆</div>
+
               <button class="btn danger" type="submit">刪除勾選</button>
             </div>
 
@@ -152,12 +247,11 @@
               {% for it in g.payments %}
               <div class="pay-item">
                 <div class="pay-left">
-                  <input type="checkbox" name="payment_ids" value="{{ it.id }}">
+                  <input type="checkbox" name="payment_ids" value="{{ it.id }}"
+                    onchange="updatePickedCount('{{ g.date|replace('-', '') }}')">
                   <span>
                     ✅ {{ it.name }}
-                    {% if it.period_no %}
-                    /第{{ it.period_no }}期
-                    {% endif %}
+                    {% if it.period_no %}/第{{ it.period_no }}期{% endif %}
                     /實收{{ it.amount }}
                   </span>
                 </div>
@@ -166,10 +260,9 @@
             </div>
           </form>
 
-
           {% if ex and ex.expenses and ex.expenses|length > 0 %}
           <hr style="margin:12px 0; border:none; border-top:1px solid #eee;">
-          <details>
+          <details class="expense-detail">
             <summary style="font-weight:800;">🧾 當日開銷明細（合計 {{ exp_total }}）</summary>
             <div style="padding:10px 0 0 0;">
               {% for e in ex.expenses %}
@@ -184,9 +277,6 @@
           {% else %}
           <div class="muted2" style="margin-top:10px;">當日無開銷</div>
           {% endif %}
-
-
-
         </div>
       </details>
 
@@ -197,7 +287,6 @@
   {% endif %}
 
   {% endfor %}
-
   {% endif %}
   </div>
 
@@ -206,6 +295,15 @@
       const box = document.getElementById('day-' + dayKey);
       if (!box) return;
       box.querySelectorAll('input[name="payment_ids"]').forEach(cb => cb.checked = master.checked);
+      updatePickedCount(dayKey);
+    }
+
+    function updatePickedCount(dayKey) {
+      const box = document.getElementById('day-' + dayKey);
+      if (!box) return;
+      const checked = box.querySelectorAll('input[name="payment_ids"]:checked').length;
+      const el = document.getElementById('picked-' + dayKey);
+      if (el) el.textContent = `已勾選 ${checked} 筆`;
     }
 
     function confirmHistoryBulk(dateStr) {
@@ -222,6 +320,79 @@
       }
       return confirm(`確定要刪除 ${checked} 筆（${dateStr}）的繳款紀錄嗎？`);
     }
+
+    function toggleAllMonths(open) {
+      document.querySelectorAll('details.month-block').forEach(d => d.open = !!open);
+      applySearch();
+    }
+
+    function toggleAllDays(open) {
+      // 只影響目前可見的日期（避免在搜尋時把隱藏的也展開）
+      document.querySelectorAll('details.day-block:not(.hidden)').forEach(d => d.open = !!open);
+    }
+
+    function applySearch() {
+      const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+      let shownDays = 0;
+      let totalDays = 0;
+
+      // 先過濾每一天
+      document.querySelectorAll('details.day-block').forEach(d => {
+        totalDays++;
+        const hay = d.getAttribute('data-search') || '';
+        const ok = (!q) || hay.includes(q);
+        d.classList.toggle('hidden', !ok);
+        if (ok) shownDays++;
+      });
+
+      // 再把「整個月份」如果底下沒有可見日期就隱藏
+      document.querySelectorAll('details.month-block').forEach(m => {
+        const hasVisible = m.querySelector('details.day-block:not(.hidden)') !== null;
+        m.classList.toggle('hidden', !hasVisible);
+      });
+
+      const info = document.getElementById('countInfo');
+      if (info) info.textContent = `顯示 ${shownDays} / ${totalDays} 天`;
+
+      // 更新月份統計（只統計可見日期）
+      refreshMonthMeta();
+    }
+
+    function refreshMonthMeta() {
+      const months = {};
+      document.querySelectorAll('details.day-block:not(.hidden)').forEach(d => {
+        const m = d.getAttribute('data-month') || '';
+        const income = Number(d.getAttribute('data-income') || '0');
+        const exp = Number(d.getAttribute('data-exp') || '0');
+        const net = Number(d.getAttribute('data-net') || '0');
+        if (!months[m]) months[m] = { income: 0, exp: 0, net: 0 };
+        months[m].income += income;
+        months[m].exp += exp;
+        months[m].net += net;
+      });
+
+      document.querySelectorAll('details.month-block').forEach(mb => {
+        const m = mb.getAttribute('data-month') || '';
+        const key = m.replaceAll('-', '');
+        const el = document.getElementById('month-meta-' + key);
+        const s = months[m] || { income: 0, exp: 0, net: 0 };
+        if (el) el.textContent = `當月總收 ${s.income}　總開銷 ${s.exp}　淨利 ${s.net}`;
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // 初始化每一天勾選數
+      document.querySelectorAll('[id^="day-"]').forEach(box => {
+        const dayKey = box.id.replace('day-', '');
+        updatePickedCount(dayKey);
+      });
+
+      // 初始化月份統計（全部）
+      refreshMonthMeta();
+
+      // 搜尋
+      document.getElementById('searchInput').addEventListener('input', applySearch);
+    });
   </script>
 </body>
 
