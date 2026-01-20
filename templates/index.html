@@ -106,6 +106,27 @@
         </form>
       </div>
     </div>
+    <!-- 🔐 帳戶狀態（試用 / 已開通 / 到期） -->
+    <div class="card" style="margin-top:10px;">
+      {% if access_mode == "trial" %}
+      <p style="margin:0;">
+        🧪 <b>試用中</b>｜
+        試用到期日：<b>{{ access_until }}</b>
+      </p>
+
+      {% elif access_mode == "activated" %}
+      <p style="margin:0;">
+        ✅ <b>已開通</b>｜
+        到期日：<b>{{ access_until }}</b>
+      </p>
+
+      {% else %}
+      <p style="margin:0; color:#dc2626;">
+        ⛔ <b>試用期已結束</b>｜
+        請聯絡管理員 LINE：@826ynmlh
+      </p>
+      {% endif %}
+    </div>
 
     {% if access_ok %}
     <div class="layout">
@@ -400,7 +421,7 @@
     </div>
     {% endif %}
 
-{% endif %}
+    {% endif %}
   </div>
 
   <script>
