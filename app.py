@@ -1028,6 +1028,8 @@ def add_record(
     # ✅ 勾「票」：扣票面餘（注意：用 use_face_value_b，不是用支出勾選）
     ticket_offset = int(amount or 0) if use_face_value_b else 0
 
+    expense_amount = int(total_amount or 0)
+
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             # 先寫 records，拿 record_id
@@ -1078,6 +1080,21 @@ def add_record(
                     ),
                 )
                 record_id = cur.fetchone()[0]
+
+            # ✅ 2) 新增資料時：把「支出金額(total_amount)」寫進每日開銷
+            if expense_amount > 0:
+                cur.execute(
+                    f"""
+                    INSERT INTO expenses (spent_at, item, amount, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH})
+                    """,
+                    (
+                        today_str(),
+                        name,  # ✅ 顯示名稱即可（你要的）
+                        expense_amount,  # ✅ 顯示金額即可（你要的）
+                        user["user_id"],
+                    ),
+                )
 
             # ===== 新增後：勾選算入今日實收 =====
             if count_today_b:
