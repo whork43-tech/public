@@ -178,6 +178,7 @@
               <th>帳號</th>
               <th>狀態</th>
               <th>開通時間</th>
+              <th>最後上線</th>
               <th>剩餘</th>
               <th>操作</th>
             </tr>
@@ -205,6 +206,14 @@
                 {{ u.activated_at }}
                 {% else %}
                 <span class="muted">未開通</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if u.last_seen_at %}
+                {{ u.last_seen_at }}
+                {% else %}
+                <span class="muted2">尚未登入</span>
                 {% endif %}
               </td>
 
