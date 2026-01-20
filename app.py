@@ -282,6 +282,23 @@ def today_str() -> str:
     return taipei_today_str()
 
 
+def touch_last_seen(user_id: int):
+    today = today_str()
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                UPDATE users
+                SET last_seen_at = {PH}
+                WHERE id = {PH}
+                  AND (last_seen_at IS NULL OR last_seen_at != {PH})
+                """,
+                (today, user_id, today),
+            )
+        conn.commit()
+
+
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -384,6 +401,7 @@ def require_login(request: Request):
         return None
     if not isinstance(user.get("user_id"), int):
         return None
+    touch_last_seen(user["user_id"])
     return user
 
 
@@ -755,7 +773,9 @@ def home(request: Request):
         )
 
     # ✅ 收費/試用：未開通或試用到期 -> 鎖首頁功能
-    access_ok, access_msg, access_until, access_mode = get_access_status(user["user_id"])
+    access_ok, access_msg, access_until, access_mode = get_access_status(
+        user["user_id"]
+    )
     if not access_ok:
         return templates.TemplateResponse(
             "index.html",
@@ -1118,7 +1138,7 @@ def admin_users(request: Request):
         with get_cursor(conn) as cur:
             cur.execute(
                 """
-                SELECT id, username, display_name, activated_at
+                SELECT id, username, display_name, activated_at, last_seen_at
                 FROM users
                 ORDER BY id DESC
             """
@@ -1134,6 +1154,7 @@ def admin_users(request: Request):
                     "username": r["username"],
                     "display_name": r["display_name"],
                     "activated_at": r["activated_at"],
+                    "last_seen_at": r["last_seen_at"],
                 }
             )
 
@@ -1144,6 +1165,7 @@ def admin_users(request: Request):
                     "username": r[1],
                     "display_name": r[2],
                     "activated_at": r[3],
+                    "last_seen_at": r[4],
                 }
             )
 
@@ -1250,9 +1272,7 @@ def admin_users_create(
             "/admin/users?msg=" + quote("建立失敗：帳號可能已存在"), status_code=303
         )
 
-    return RedirectResponse(
-        "/admin/users?msg=" + quote("已新增帳號"), status_code=303
-    )
+    return RedirectResponse("/admin/users?msg=" + quote("已新增帳號"), status_code=303)
 
 
 @app.post("/admin/users/delete")
@@ -1278,7 +1298,11 @@ def admin_users_delete(
         with get_cursor(conn) as cur:
             cur.execute(f"SELECT username FROM users WHERE id = {PH}", (user_id,))
             row = cur.fetchone()
-            target_username = row[0] if (row and not isinstance(row, sqlite3.Row)) else (row["username"] if row else "")
+            target_username = (
+                row[0]
+                if (row and not isinstance(row, sqlite3.Row))
+                else (row["username"] if row else "")
+            )
 
     if ADMIN_USERNAME and target_username == ADMIN_USERNAME:
         return RedirectResponse(
@@ -1290,9 +1314,7 @@ def admin_users_delete(
             cur.execute(f"DELETE FROM users WHERE id = {PH}", (user_id,))
         conn.commit()
 
-    return RedirectResponse(
-        "/admin/users?msg=" + quote("已刪除帳號"), status_code=303
-    )
+    return RedirectResponse("/admin/users?msg=" + quote("已刪除帳號"), status_code=303)
 
 
 @app.post("/history/delete")
