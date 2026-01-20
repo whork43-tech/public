@@ -91,16 +91,23 @@
 
     {% else %}
     <!-- ✅ 已登入：才渲染主畫面 -->
-    <div class="card" style="display:flex; gap:10px; align-items:center;">
-      <a class="btn" href="/change_name">修改名稱</a>
-      <a class="btn" href="/change_password">更改密碼</a>
-      <form method="post" action="/logout" style="margin:0;">
-        <button class="btn">登出</button>
-      </form>
+    <div class="card"
+      style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div>
+        目前登入：
+        <b>{{ user.display_name if user.display_name else user.username }}</b>
+        <span style="opacity:.6; font-size:13px;">（{{ user.username }}）</span>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <a class="btn" href="/change_password">更改密碼</a>
+        <form method="post" action="/logout" style="margin:0;">
+          <button class="btn">登出</button>
+        </form>
+      </div>
     </div>
 
-
-
+    {% if access_ok %}
     <div class="layout">
 
       <!-- 左邊：功能 -->
@@ -392,6 +399,8 @@
       </div>
     </div>
     {% endif %}
+
+{% endif %}
   </div>
 
   <script>
