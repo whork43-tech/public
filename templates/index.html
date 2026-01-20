@@ -160,7 +160,8 @@
                   {% set paid_sum = r.paid_sum if r.paid_sum is defined else 0 %}
                   {% set ticket_offset = r.ticket_offset if r.ticket_offset is defined else 0 %}
                   {% set face_left = r.face_value - ticket_offset %}
-                  {% set spend_left = (r.total_amount - paid_sum) %}
+                  {% set expense_offset = r.expense_offset if r.expense_offset is defined else 0 %}
+                  {% set spend_left = (r.total_amount - paid_sum - expense_offset) %}
                   {% set periods_left = (r.periods - r.paid_count) %}
 
 
