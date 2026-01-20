@@ -157,6 +157,9 @@ def init_db():
                 if not _sqlite_has_column(cur, "users", "trial_until"):
                     cur.execute("ALTER TABLE users ADD COLUMN trial_until TEXT")
 
+                if not _sqlite_has_column(cur, "users", "last_seen_at"):
+                    cur.execute("ALTER TABLE users ADD COLUMN last_seen_at TEXT")
+
             else:
                 cur.execute(
                     """
@@ -187,6 +190,13 @@ ADD COLUMN IF NOT EXISTS display_name TEXT
                     """
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS trial_until TEXT
+"""
+                )
+
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS last_seen_at TEXT
 """
                 )
 
@@ -396,6 +406,7 @@ def get_current_user(request: Request):
 
 
 def require_login(request: Request):
+    init_db()  # ✅ 確保欄位都存在
     user = get_current_user(request)
     if not user:
         return None
