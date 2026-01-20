@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8">
+    <title>修改名稱</title>
+</head>
+
+<body>
+    <h2>修改顯示名稱</h2>
+
+    <form method="post">
+        <label>
+            顯示名稱：
+            <input type="text" name="display_name" value="{{ user.display_name }}" required>
+        </label>
+
+        <br><br>
+
+        <button type="submit">儲存</button>
+        <a href="/">取消</a>
+    </form>
+</body>
+
+</html>
