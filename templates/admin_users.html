@@ -48,7 +48,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 760px;
+      min-width: 860px;
     }
 
     thead th {
@@ -129,6 +129,12 @@
       </div>
 
       <!-- 工具列 -->
+      {% if msg %}
+      <div class="card" style="margin-top:12px;">
+        <b>{{ msg }}</b>
+      </div>
+      {% endif %}
+
       <div class="toolbar">
         <input id="searchInput" type="text" placeholder="搜尋：輸入 ID 或 帳號（即時過濾）">
 
@@ -140,11 +146,24 @@
         <div class="muted2" id="countInfo"></div>
       </div>
 
-      <div class="table-wrap">
+      
+      <!-- 新增帳號 -->
+      <div class="card" style="margin-top:12px;">
+        <h3 style="margin:0 0 10px;">新增帳號</h3>
+        <form method="post" action="/admin/users/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="text" name="display_name" placeholder="名稱" required style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
+          <input type="text" name="username" placeholder="帳號" required style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
+          <input type="text" name="password" placeholder="密碼(至少6碼)" required style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
+          <button class="btn" type="submit">新增</button>
+        </form>
+      </div>
+
+<div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>ID</th>
+              <th>名稱</th>
               <th>帳號</th>
               <th>狀態</th>
               <th>開通時間</th>
@@ -159,6 +178,7 @@
               data-active="{% if u.activated_at %}1{% else %}0{% endif %}"
               data-activated="{% if u.activated_at %}{{ u.activated_at }}{% endif %}">
               <td>{{ u.id }}</td>
+              <td>{{ u.display_name }}</td>
               <td>{{ u.username }}</td>
 
               <td>
@@ -202,11 +222,16 @@
                     {% endif %}
                   </div>
                 </form>
+
+                <form method="post" action="/admin/users/delete" style="margin:8px 0 0;" onsubmit="return confirm('確定要刪除此帳號？');">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <button class="btn sm danger" type="submit">刪除帳號</button>
+                </form>
               </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="6" class="muted" style="padding:12px;">目前沒有帳號</td>
+              <td colspan="7" class="muted" style="padding:12px;">目前沒有帳號</td>
             </tr>
             {% endfor %}
           </tbody>
