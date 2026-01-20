@@ -255,6 +255,29 @@
     </div>
 
     {% else %}
+    <!-- 💰 收費說明（未開通 / 試用顯示） -->
+    {% if user and access_mode != "activated" %}
+    <div class="card" style="margin-top:14px;">
+      <h2 style="margin-top:0;">收費說明</h2>
+
+      <p>
+        本系統為 <b>個人放款專用</b> 的分期帳務管理工具，
+        協助你清楚掌握每一筆收款與支出，避免算錯、漏帳。
+      </p>
+
+      <ul style="padding-left:18px; line-height:1.8;">
+        <li>🧪 <b>免費試用 7 天</b>（功能完整開放）</li>
+        <li>💼 試用結束後 <b>NT$ 299 / 月</b></li>
+        <li>📁 到期未續費 <b>資料不會刪除</b></li>
+        <li>🔐 續費後立即恢復使用</li>
+      </ul>
+
+      <p style="margin-bottom:0;">
+        📩 開通或續費請聯絡 LINE：<b>@826ynmlh</b>
+      </p>
+    </div>
+    {% endif %}
+
     <!-- ✅ 已登入：才渲染主畫面 -->
     <div class="card"
       style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
