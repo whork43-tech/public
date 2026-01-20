@@ -327,6 +327,7 @@ def row_to_view(row):
     name = row["name"] if isinstance(row, sqlite3.Row) else row[2]
     face_value = row["face_value"] if isinstance(row, sqlite3.Row) else row[3]
     ticket_offset = row["ticket_offset"] if isinstance(row, sqlite3.Row) else row[11]
+    expense_offset = row["expense_offset"] if isinstance(row, sqlite3.Row) else row[12]
     total_amount = row["total_amount"] if isinstance(row, sqlite3.Row) else row[4]
     periods = row["periods"] if isinstance(row, sqlite3.Row) else row[5]
     amount = row["amount"] if isinstance(row, sqlite3.Row) else row[6]
@@ -355,6 +356,7 @@ def row_to_view(row):
         "name": name,
         "face_value": int(face_value),
         "ticket_offset": int(ticket_offset or 0),
+        "expense_offset": int(expense_offset or 0),
         "total_amount": int(total_amount),
         "periods": int(periods),
         "amount": int(amount),
@@ -379,7 +381,7 @@ def get_all_records_for_user(user_id: int):
                 cur.execute(
                     f"""
     SELECT id, created_date, name, face_value, total_amount, periods, amount,
-           interval_days, paid_count, last_paid_day, user_id, ticket_offset
+           interval_days, paid_count, last_paid_day, user_id, ticket_offset, expense_offset
     FROM records
     WHERE user_id = {PH}
       AND is_deleted = FALSE
@@ -401,7 +403,7 @@ def get_all_records_for_user(user_id: int):
                 cur.execute(
                     f"""
     SELECT id, created_date, name, face_value, total_amount, periods, amount,
-           interval_days, paid_count, last_paid_day, user_id, ticket_offset
+           interval_days, paid_count, last_paid_day, user_id, ticket_offset, expense_offset
     FROM records
     WHERE user_id = {PH}
     ORDER BY id DESC
@@ -418,7 +420,7 @@ def get_record_for_user(rid: int, user_id: int):
             cur.execute(
                 f"""
     SELECT id, created_date, name, face_value, total_amount, periods, amount,
-           interval_days, paid_count, last_paid_day, user_id, ticket_offset
+           interval_days, paid_count, last_paid_day, user_id, ticket_offset, expense_offset
     FROM records
     WHERE id = {PH} AND user_id = {PH}
 """,
@@ -799,7 +801,11 @@ def add_record(
 
     ticket_deduct_one_b = ticket_deduct_one == "1"
 
-    ticket_offset = int(amount or 0) if ticket_deduct_one_b else 0
+    # ✅ 支出勾選：扣支出餘（而不是票面餘）
+    expense_offset = int(amount or 0) if ticket_deduct_one_b else 0
+
+    # ✅ 票面扣除：先不要被「支出」勾選影響（保持 0）
+    ticket_offset = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -808,7 +814,7 @@ def add_record(
                 cur.execute(
                     f"""
                     INSERT INTO records
-                    (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id, ticket_offset)
+                    (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id, ticket_offset, expense_offset)
                     VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
                     """,
                     (
@@ -823,6 +829,7 @@ def add_record(
                         int(last_paid_day),
                         user["user_id"],
                         int(ticket_offset),
+                        int(expense_offset),
                     ),
                 )
                 record_id = cur.lastrowid
@@ -830,7 +837,7 @@ def add_record(
                 cur.execute(
                     f"""
                     INSERT INTO records
-                    (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id, ticket_offset)
+                    (created_date, name, face_value, total_amount, periods, amount, interval_days, paid_count, last_paid_day, user_id, ticket_offset, expense_offset)
                     VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})
                     RETURNING id
                     """,
@@ -846,6 +853,7 @@ def add_record(
                         int(last_paid_day),
                         user["user_id"],
                         int(ticket_offset),
+                        int(expense_offset),
                     ),
                 )
                 record_id = cur.fetchone()[0]
@@ -1379,7 +1387,7 @@ def edit_page(request: Request, record_id: int):
             cur.execute(
                 f"""
                 SELECT id, created_date, name, face_value, total_amount, periods, amount,
-       interval_days, paid_count, last_paid_day, user_id, ticket_offset
+       interval_days, paid_count, last_paid_day, user_id, ticket_offset, expense_offset
 FROM records
 WHERE id = {PH} AND user_id = {PH}
             """,
