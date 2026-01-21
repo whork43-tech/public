@@ -217,10 +217,12 @@ ADD COLUMN IF NOT EXISTS group_activated_at TEXT
 """
                 )
 
-                if not _sqlite_has_column(cur, "users", "group_trial_started_at"):
-                    cur.execute(
-                        "ALTER TABLE users ADD COLUMN group_trial_started_at TEXT"
-                    )
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT
+"""
+                )
 
             # ========== RECORDS ==========
             cur.execute(
@@ -724,6 +726,74 @@ def calc_current_day(created_date_obj: date) -> int:
     return (today - created_date_obj).days
 
 
+def get_linked_accounts(master_user_id: int) -> list[dict]:
+    ids = get_child_user_ids(master_user_id)
+    if not ids:
+        return []
+
+    phs = ",".join([PH] * len(ids))
+    out = []
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT id, username, display_name, activated_at, trial_until
+                FROM users
+                WHERE id IN ({phs})
+                """,
+                tuple(ids),
+            )
+            rows = cur.fetchall()
+
+    today = date.fromisoformat(today_str())
+
+    # 做 map，確保順序跟 ids 一樣
+    tmp = {}
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            uid = int(r["id"])
+            activated_at = _parse_iso_date(r["activated_at"])
+            trial_until = _parse_iso_date(r["trial_until"])
+            tmp[uid] = {
+                "user_id": uid,
+                "username": r["username"],
+                "display_name": r["display_name"] or "",
+                "main_active": bool(
+                    (activated_at and today <= activated_at)
+                    or (trial_until and today <= trial_until)
+                ),
+            }
+        else:
+            uid = int(r[0])
+            activated_at = _parse_iso_date(r[3])
+            trial_until = _parse_iso_date(r[4])
+            tmp[uid] = {
+                "user_id": uid,
+                "username": r[1],
+                "display_name": r[2] or "",
+                "main_active": bool(
+                    (activated_at and today <= activated_at)
+                    or (trial_until and today <= trial_until)
+                ),
+            }
+
+    for uid in ids:
+        out.append(
+            tmp.get(
+                uid,
+                {
+                    "user_id": uid,
+                    "username": "",
+                    "display_name": "",
+                    "main_active": False,
+                },
+            )
+        )
+
+    return out
+
+
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
     if last_paid_day <= 0:
         return interval_days  # ✅ 建立日當天不算收款日
@@ -1130,6 +1200,7 @@ def home(request: Request):
             "today_net": today_net,
             "total_face_value_left": total_face_value_left,
             "master_mode": master_mode,
+            "my_month_net": my_month_net,
         },
     )
 
@@ -1382,7 +1453,35 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-        conn.commit()
+            # ✅ 勾「是否算入今日實收」→ 直接記一筆今天收款
+            if count_today_b:
+                with get_conn() as conn:
+                    with get_cursor(conn) as cur:
+                        cur.execute(
+                            f"INSERT INTO payments (paid_at, amount, record_id, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                            (
+                                today_str(),
+                                int(amount or 0),
+                                int(record_id),
+                                user["user_id"],
+                            ),
+                        )
+            # ✅ 只要「支出(total_amount)」有填，就記一筆開銷到 expenses
+            try:
+                principal = int(total_amount or 0)
+            except Exception:
+                principal = 0
+
+            if principal > 0:
+                spent_day = created_date or today_str()
+                # 用建立日當作支出日期；沒填就用今天
+                with get_conn() as conn:
+                    with get_cursor(conn) as cur:
+                        cur.execute(
+                            f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                            (spent_day, f"{name}（支出）", principal, user["user_id"]),
+                        )
+                    conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
@@ -1409,8 +1508,7 @@ def group_month(request: Request):
 
     # 連結功能：7天試用 + 付費
     ok, mode, until, msg = get_group_access_status(user["user_id"])
-    if not ok:
-        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+    group_enabled = bool(ok)  # ✅ True 才顯示金額
 
     # ym=YYYY-MM（不給就用當月）
     ym = (request.query_params.get("ym") or "").strip()
@@ -1423,6 +1521,7 @@ def group_month(request: Request):
             year = month = None
 
     group_summary = compute_group_summary(user["user_id"], year=year, month=month)
+    linked_accounts = get_linked_accounts(user["user_id"])
 
     today = date.fromisoformat(today_str())
     show_y = year or today.year
@@ -1434,39 +1533,18 @@ def group_month(request: Request):
         {
             "request": request,
             "user": user,
-            "group_summary": group_summary,
             "show_ym": show_ym,
+            "linked_accounts": linked_accounts,
+            "group_enabled": group_enabled,
             "group_mode": mode,
             "group_until": (until.isoformat() if until else ""),
-        },
-    )
-
-    # ym=YYYY-MM（不給就用當月）
-    ym = (request.query_params.get("ym") or "").strip()
-    year = month = None
-    if ym and len(ym) == 7 and ym[4] == "-":
-        try:
-            year = int(ym[:4])
-            month = int(ym[5:7])
-        except Exception:
-            year = month = None
-
-    # 把 year/month 傳進 summary，讓每個子帳號算同一個月
-    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
-
-    # 提供頁面顯示的年月（用於 UI）
-    today = date.fromisoformat(today_str())
-    show_y = year or today.year
-    show_m = month or today.month
-    show_ym = f"{show_y:04d}-{show_m:02d}"
-
-    return templates.TemplateResponse(
-        "group_month.html",
-        {
-            "request": request,
-            "user": user,
-            "group_summary": group_summary,
-            "show_ym": show_ym,
+            "group_msg": msg,
+            # ✅ 只有 group_enabled 才計算金額
+            "group_summary": (
+                compute_group_summary(user["user_id"], year=year, month=month)
+                if group_enabled
+                else None
+            ),
         },
     )
 
@@ -2352,7 +2430,6 @@ WHERE id = {PH} AND user_id = {PH}
     )
 
 
-@app.post("/edit/{record_id}")
 @app.post("/edit/{record_id}")
 def edit_save(
     request: Request,
