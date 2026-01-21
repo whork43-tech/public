@@ -1,4 +1,5 @@
 import os
+from fastapi.responses import HTMLResponse
 import hashlib
 import sqlite3
 from urllib.parse import quote
@@ -6,6 +7,7 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from typing import List
 from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 import psycopg
 from psycopg.rows import tuple_row
@@ -160,6 +162,14 @@ def init_db():
                 if not _sqlite_has_column(cur, "users", "last_seen_at"):
                     cur.execute("ALTER TABLE users ADD COLUMN last_seen_at TEXT")
 
+                if not _sqlite_has_column(cur, "users", "group_activated_at"):
+                    cur.execute("ALTER TABLE users ADD COLUMN group_activated_at TEXT")
+
+                if not _sqlite_has_column(cur, "users", "group_trial_started_at"):
+                    cur.execute(
+                        "ALTER TABLE users ADD COLUMN group_trial_started_at TEXT"
+                    )
+
             else:
                 cur.execute(
                     """
@@ -199,6 +209,18 @@ ALTER TABLE users
 ADD COLUMN IF NOT EXISTS last_seen_at TEXT
 """
                 )
+
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS group_activated_at TEXT
+"""
+                )
+
+                if not _sqlite_has_column(cur, "users", "group_trial_started_at"):
+                    cur.execute(
+                        "ALTER TABLE users ADD COLUMN group_trial_started_at TEXT"
+                    )
 
             # ========== RECORDS ==========
             cur.execute(
@@ -282,6 +304,35 @@ ADD COLUMN IF NOT EXISTS last_seen_at TEXT
             """
             )
 
+            # ========== ACCOUNT LINKS (Master -> Child) ==========
+            # 主帳號可以看到子帳號的彙總數字（不影響各帳號原本資料與功能）
+            if IS_SQLITE:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS account_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        master_user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE,
+                        child_user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE,
+                        UNIQUE(master_user_id, child_user_id)
+                    );
+                    """
+                )
+            else:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS account_links (
+                        id SERIAL PRIMARY KEY,
+                        master_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        child_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        UNIQUE(master_user_id, child_user_id)
+                    );
+                    """
+                )
+
         conn.commit()
 
 
@@ -330,6 +381,68 @@ def _parse_iso_date(s: str | None):
         return date.fromisoformat(s)
     except Exception:
         return None
+
+
+def get_group_access_status(user_id: int):
+    """
+    連結功能狀態：
+    - 第一次使用：自動啟動 7 天試用（寫入 group_trial_started_at）
+    - 試用中：OK
+    - 付費中：OK（group_activated_at >= today）
+    - 到期：不給用
+    回傳 (ok, mode, until, msg)
+    mode: "activated" | "trial" | "expired"
+    """
+    init_db()
+    today = date.fromisoformat(today_str())
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT group_activated_at, group_trial_started_at FROM users WHERE id = {PH}",
+                (user_id,),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return (False, "expired", None, "帳號不存在")
+
+    if isinstance(row, sqlite3.Row):
+        activated_s = row["group_activated_at"]
+        trial_s = row["group_trial_started_at"]
+    else:
+        activated_s = row[0]
+        trial_s = row[1]
+
+    activated = _parse_iso_date(activated_s)
+    trial_start = _parse_iso_date(trial_s)
+
+    # 1) 已付費開通
+    if activated and today <= activated:
+        return (True, "activated", activated, "")
+
+    # 2) 試用已開始
+    if trial_start:
+        trial_until = trial_start + timedelta(days=7)
+        if today <= trial_until:
+            return (True, "trial", trial_until, "")
+        return (
+            False,
+            "expired",
+            None,
+            "連結功能試用已到期，請聯絡 LINE：@826ynmlh 開通",
+        )
+
+    # 3) 第一次使用：啟動試用
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET group_trial_started_at = {PH} WHERE id = {PH}",
+                (today.isoformat(), user_id),
+            )
+        conn.commit()
+
+    return (True, "trial", today + timedelta(days=7), "")
 
 
 def get_access_status(user_id: int):
@@ -436,6 +549,171 @@ def require_admin(request: Request):
     if ADMIN_USERNAME and user.get("username") == ADMIN_USERNAME:
         return user
     return None
+
+
+def get_child_user_ids(master_user_id: int) -> list[int]:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT child_user_id FROM account_links WHERE master_user_id = {PH} ORDER BY child_user_id ASC",
+                (master_user_id,),
+            )
+            rows = cur.fetchall()
+
+    out: list[int] = []
+    for r in rows:
+        cid = r["child_user_id"] if isinstance(r, sqlite3.Row) else r[0]
+        try:
+            out.append(int(cid))
+        except Exception:
+            pass
+    return out
+
+
+def is_master_user(user_id: int) -> bool:
+    # 有任何 child 連動，就視為主帳號
+    return len(get_child_user_ids(user_id)) > 0
+
+
+def compute_user_face_totals(user_id: int) -> tuple[int, int]:
+    """
+    回傳 (總票面, 總票面餘)；只算未結清 (paid_count < periods)
+    規則沿用你首頁原本的算法，不動既有功能
+    """
+    rows_raw = get_all_records_for_user(user_id)
+    rows = [row_to_view(r) for r in rows_raw]
+    paid_sum_map = get_paid_sum_map(user_id)
+    for r in rows:
+        r["paid_sum"] = paid_sum_map.get(r["id"], 0)
+
+    total_face_value = sum(
+        int((r.get("face_value") or 0))
+        for r in rows
+        if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
+    )
+
+    total_face_value_left = sum(
+        int((r.get("face_value") or 0))
+        - int((r.get("ticket_offset") or 0))
+        - int((r.get("paid_sum") or 0))
+        for r in rows
+        if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
+    )
+
+    return int(total_face_value), int(total_face_value_left)
+
+
+def compute_group_summary(
+    master_user_id: int, year: int | None = None, month: int | None = None
+) -> dict:
+    """
+    只計算『連結帳號』的指定月份淨利 + 帳號顯示名稱
+    """
+    child_ids = get_child_user_ids(master_user_id)
+
+    if not child_ids:
+        return {"month_total": 0, "per_user": []}
+
+    placeholders = ",".join([PH] * len(child_ids))
+
+    # 一次抓 username/display_name
+    user_map = {}
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT id, username, display_name FROM users WHERE id IN ({placeholders})",
+                tuple(child_ids),
+            )
+            rows = cur.fetchall()
+
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            uid = int(r["id"])
+            user_map[uid] = {
+                "username": r["username"],
+                "display_name": r["display_name"] or "",
+            }
+        else:
+            uid = int(r[0])
+            user_map[uid] = {"username": r[1], "display_name": r[2] or ""}
+
+    per_user = []
+    total = 0
+
+    for uid in child_ids:
+        month_net = get_month_net_for_user(uid, year=year, month=month)
+        total += month_net
+        info = user_map.get(uid, {"username": "", "display_name": ""})
+
+        per_user.append(
+            {
+                "user_id": uid,
+                "username": info["username"],
+                "display_name": info["display_name"],
+                "month_net": int(month_net),
+            }
+        )
+
+    # ✅ 排序：淨利高到低
+    per_user.sort(key=lambda x: x["month_net"], reverse=True)
+
+    return {"month_total": int(total), "per_user": per_user}
+
+
+from datetime import date
+
+
+def _month_start_end(year: int, month: int) -> tuple[str, str]:
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year + 1, 1, 1)
+    else:
+        end = date(year, month + 1, 1)
+    return start.isoformat(), end.isoformat()
+
+
+def get_month_net_for_user(
+    user_id: int, year: int | None = None, month: int | None = None
+) -> int:
+    """
+    計算單一帳號的『指定月份淨利』
+    淨利 = 該月實收 - 該月開銷
+    """
+    today = date.fromisoformat(today_str())  # ✅ 跟全站一致（Asia/Taipei）
+    y = int(year or today.year)
+    m = int(month or today.month)
+
+    month_start, month_end = _month_start_end(y, m)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 該月實收
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE user_id = {PH}
+                  AND paid_at >= {PH}
+                  AND paid_at < {PH}
+                """,
+                (user_id, month_start, month_end),
+            )
+            income = cur.fetchone()[0] or 0
+
+            # 該月開銷
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM expenses
+                WHERE user_id = {PH}
+                  AND spent_at >= {PH}
+                  AND spent_at < {PH}
+                """,
+                (user_id, month_start, month_end),
+            )
+            expense = cur.fetchone()[0] or 0
+
+    return int(income) - int(expense)
 
 
 # ======================
@@ -783,22 +1061,16 @@ def home(request: Request):
             "index.html", {"request": request, "user": None, "paid_msg": paid_msg}
         )
 
+    master_mode = bool(user and is_master_user(user["user_id"]))
+
     # ✅ 收費/試用：未開通或試用到期 -> 鎖首頁功能
     access_ok, access_msg, access_until, access_mode = get_access_status(
         user["user_id"]
     )
     if not access_ok:
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "user": user,
-                "paid_msg": access_msg or paid_msg,
-                "access_ok": False,
-                "access_until": None,
-                "access_mode": access_mode,
-            },
-        )
+        group_summary = None
+        # 在你算完 access_ok 之後（或至少在 return TemplateResponse 之前）
+        master_mode = bool(user and is_master_user(user["user_id"]))
 
     # ✅ 取出該使用者所有分期資料
     rows_raw = get_all_records_for_user(user["user_id"])
@@ -816,6 +1088,7 @@ def home(request: Request):
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
+    my_month_net = get_month_net_for_user(user["user_id"])
 
     # ✅ 今日淨收
     today_net = int(today_total) - int(today_expense_total)
@@ -841,7 +1114,7 @@ def home(request: Request):
             "request": request,
             "user": user,
             "paid_msg": paid_msg,
-            "access_ok": True,
+            "access_ok": access_ok,
             "access_until": (access_until.isoformat() if access_until else ""),
             "access_mode": access_mode,
             "paid_id": paid_id,
@@ -856,6 +1129,7 @@ def home(request: Request):
             "total_face_value": total_face_value,
             "today_net": today_net,
             "total_face_value_left": total_face_value_left,
+            "master_mode": master_mode,
         },
     )
 
@@ -1113,6 +1387,90 @@ def add_record(
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
 
+@app.get("/group-month")
+def group_month(request: Request):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    # 只有 master 才能看
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse("/", status_code=303)
+
+    # ✅ 連結帳號功能：需另外開通
+    ok, msg, _until = get_group_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse(url="/?paid_msg=" + quote(msg), status_code=303)
+
+    # 只有 master 才能看
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse("/", status_code=303)
+
+    # 連結功能：7天試用 + 付費
+    ok, mode, until, msg = get_group_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+
+    # ym=YYYY-MM（不給就用當月）
+    ym = (request.query_params.get("ym") or "").strip()
+    year = month = None
+    if ym and len(ym) == 7 and ym[4] == "-":
+        try:
+            year = int(ym[:4])
+            month = int(ym[5:7])
+        except Exception:
+            year = month = None
+
+    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
+
+    today = date.fromisoformat(today_str())
+    show_y = year or today.year
+    show_m = month or today.month
+    show_ym = f"{show_y:04d}-{show_m:02d}"
+
+    return templates.TemplateResponse(
+        "group_month.html",
+        {
+            "request": request,
+            "user": user,
+            "group_summary": group_summary,
+            "show_ym": show_ym,
+            "group_mode": mode,
+            "group_until": (until.isoformat() if until else ""),
+        },
+    )
+
+    # ym=YYYY-MM（不給就用當月）
+    ym = (request.query_params.get("ym") or "").strip()
+    year = month = None
+    if ym and len(ym) == 7 and ym[4] == "-":
+        try:
+            year = int(ym[:4])
+            month = int(ym[5:7])
+        except Exception:
+            year = month = None
+
+    # 把 year/month 傳進 summary，讓每個子帳號算同一個月
+    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
+
+    # 提供頁面顯示的年月（用於 UI）
+    today = date.fromisoformat(today_str())
+    show_y = year or today.year
+    show_m = month or today.month
+    show_ym = f"{show_y:04d}-{show_m:02d}"
+
+    return templates.TemplateResponse(
+        "group_month.html",
+        {
+            "request": request,
+            "user": user,
+            "group_summary": group_summary,
+            "show_ym": show_ym,
+        },
+    )
+
+
 @app.get("/history")
 def history(request: Request):
     user = require_active(request)
@@ -1136,6 +1494,177 @@ def history(request: Request):
     )
 
 
+@app.get("/admin/links", response_class=HTMLResponse)
+def admin_links_page(request: Request):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    msg = request.query_params.get("msg", "")
+
+    # 讀出所有連動
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT al.id, al.master_user_id, mu.username, mu.display_name,
+                       al.child_user_id, cu.username, cu.display_name
+                FROM account_links al
+                JOIN users mu ON mu.id = al.master_user_id
+                JOIN users cu ON cu.id = al.child_user_id
+                ORDER BY al.id DESC
+                """
+            )
+            rows = cur.fetchall()
+
+    lines = []
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            rid = r["id"]
+            master = f'{r["master_user_id"]} / {r["username"]} / {r["display_name"]}'
+            child = f'{r["child_user_id"]} / {r["username_1"] if "username_1" in r.keys() else r["username"]}'
+        else:
+            rid = r[0]
+            master = f"{r[1]} / {r[2]} / {r[3]}"
+            child = f"{r[4]} / {r[5]} / {r[6]}"
+
+        # sqlite row 欄位名在 join 可能不穩，簡單用 tuple 方式處理更穩
+    # 改用 tuple 方式重新組一次（更穩定）
+    items = []
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            rid = int(r[0])
+            master_user_id = int(r[1])
+            master_username = r[2]
+            master_display = r[3]
+            child_user_id = int(r[4])
+            child_username = r[5]
+            child_display = r[6]
+        else:
+            rid = int(r[0])
+            master_user_id = int(r[1])
+            master_username = r[2]
+            master_display = r[3]
+            child_user_id = int(r[4])
+            child_username = r[5]
+            child_display = r[6]
+
+        items.append(
+            f"""
+            <tr>
+              <td>{rid}</td>
+              <td>{master_user_id} / {master_username} / {master_display or ""}</td>
+              <td>{child_user_id} / {child_username} / {child_display or ""}</td>
+              <td>
+                <form method="post" action="/admin/links/delete" onsubmit="return confirm('確定刪除連動？');" style="margin:0;">
+                  <input type="hidden" name="link_id" value="{rid}">
+                  <button type="submit">刪除</button>
+                </form>
+              </td>
+            </tr>
+            """
+        )
+
+    html = f"""
+    <html><head><meta charset="utf-8"><title>帳號連動管理</title></head>
+    <body style="font-family:Arial,'Microsoft JhengHei',sans-serif; padding:16px;">
+      <h2>帳號連動管理</h2>
+      <p><a href="/admin/users">回使用者列表</a> ｜ <a href="/">回首頁</a></p>
+      {"<p style='color:#c00;'><b>"+msg+"</b></p>" if msg else ""}
+
+      <h3>新增連動（主帳號 -> 子帳號）</h3>
+      <form method="post" action="/admin/links/add" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+        <label>主帳號 username<br><input name="master_username" required></label>
+        <label>子帳號 username<br><input name="child_username" required></label>
+        <button type="submit">新增</button>
+      </form>
+
+      <h3 style="margin-top:18px;">目前連動</h3>
+      <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;">
+        <tr>
+          <th>ID</th><th>主帳號</th><th>子帳號</th><th>操作</th>
+        </tr>
+        {''.join(items) if items else '<tr><td colspan="4">尚無連動</td></tr>'}
+      </table>
+    </body></html>
+    """
+    return HTMLResponse(html)
+
+
+@app.post("/admin/links/add")
+def admin_links_add(
+    request: Request,
+    master_username: str = Form(...),
+    child_username: str = Form(...),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    master_username = (master_username or "").strip()
+    child_username = (child_username or "").strip()
+    if not master_username or not child_username:
+        return RedirectResponse(
+            "/admin/links?msg=" + quote("請填完整"), status_code=303
+        )
+    if master_username == child_username:
+        return RedirectResponse(
+            "/admin/links?msg=" + quote("主帳號與子帳號不可相同"), status_code=303
+        )
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT id FROM users WHERE username = {PH}", (master_username,)
+            )
+            m = cur.fetchone()
+            cur.execute(
+                f"SELECT id FROM users WHERE username = {PH}", (child_username,)
+            )
+            c = cur.fetchone()
+
+            if not m or not c:
+                return RedirectResponse(
+                    "/admin/links?msg=" + quote("找不到帳號"), status_code=303
+                )
+
+            master_id = int(m["id"] if isinstance(m, sqlite3.Row) else m[0])
+            child_id = int(c["id"] if isinstance(c, sqlite3.Row) else c[0])
+
+            try:
+                cur.execute(
+                    f"INSERT INTO account_links (master_user_id, child_user_id) VALUES ({PH}, {PH})",
+                    (master_id, child_id),
+                )
+                conn.commit()
+            except Exception:
+                # 可能重複
+                if not IS_SQLITE:
+                    conn.rollback()
+                return RedirectResponse(
+                    "/admin/links?msg=" + quote("新增失敗：可能已存在"), status_code=303
+                )
+
+    return RedirectResponse("/admin/links?msg=" + quote("新增完成"), status_code=303)
+
+
+@app.post("/admin/links/delete")
+def admin_links_delete(request: Request, link_id: int = Form(...)):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(f"DELETE FROM account_links WHERE id = {PH}", (link_id,))
+        conn.commit()
+
+    return RedirectResponse("/admin/links?msg=" + quote("已刪除"), status_code=303)
+
+
 @app.get("/admin/users")
 def admin_users(request: Request):
     init_db()
@@ -1149,10 +1678,13 @@ def admin_users(request: Request):
         with get_cursor(conn) as cur:
             cur.execute(
                 """
-                SELECT id, username, display_name, activated_at, last_seen_at
-                FROM users
-                ORDER BY id DESC
-            """
+    SELECT id, username, display_name,
+           activated_at, last_seen_at,
+           group_activated_at,
+           group_trial_started_at
+    FROM users
+    ORDER BY id DESC
+"""
             )
             rows = cur.fetchall()
 
@@ -1166,6 +1698,8 @@ def admin_users(request: Request):
                     "display_name": r["display_name"],
                     "activated_at": r["activated_at"],
                     "last_seen_at": r["last_seen_at"],
+                    "group_activated_at": r["group_activated_at"],
+                    "group_trial_started_at": r["group_trial_started_at"],
                 }
             )
 
@@ -1177,6 +1711,8 @@ def admin_users(request: Request):
                     "display_name": r[2],
                     "activated_at": r[3],
                     "last_seen_at": r[4],
+                    "group_activated_at": r[5],
+                    "group_trial_started_at": r[6],
                 }
             )
 
@@ -1351,6 +1887,45 @@ def delete_payment(request: Request, payment_id: int = Form(...)):
     return RedirectResponse("/history", status_code=303)
 
 
+@app.post("/admin/users/group_activate")
+def admin_users_group_activate(
+    request: Request,
+    user_id: int = Form(...),
+    days: str = Form(""),
+    clear: str | None = Form(None),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    from datetime import date, timedelta
+
+    days = (days or "").strip()
+
+    if clear == "1":
+        value = None
+    else:
+        if not days:
+            value = None
+        else:
+            d = int(days)
+            until = date.fromisoformat(today_str()) + timedelta(
+                days=d
+            )  # ✅ 用台北日期一致
+            value = until.isoformat()
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET group_activated_at = {PH} WHERE id = {PH}",
+                (value, user_id),
+            )
+        conn.commit()
+
+    return RedirectResponse("/admin/users", status_code=303)
+
+
 @app.get("/add-page")
 def add_page_2(request: Request):
     user = require_active(request)
@@ -1418,16 +1993,6 @@ def add_expense(
         url="/?paid_msg=" + quote(f"新增開銷完成（{len(to_insert)}筆）"),
         status_code=303,
     )
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                (today_str(), item, amount, user["user_id"]),
-            )
-        conn.commit()
-
-    return RedirectResponse(url="/?paid_msg=" + quote("新增開銷完成"), status_code=303)
 
 
 @app.get("/expense/edit/{expense_id}")
