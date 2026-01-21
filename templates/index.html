@@ -712,6 +712,12 @@
       if (n === 0) { alert('請先勾選要刪除的開銷'); return false; }
       return confirm(`確定要刪除 ${n} 筆開銷嗎？`);
     }
+
+    if (window.innerWidth < 640) {
+      document.querySelectorAll('.seg-btn.active')
+        .forEach(b => b.classList.remove('active'));
+    }
+
   </script>
   <div class="card" style="margin-top:24px;">
     <p style="margin:0;">
