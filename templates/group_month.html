@@ -47,7 +47,6 @@
         </div>
         {% endif %}
 
-
         {# 建立 month_net 對照表：user_id -> month_net（只有開通才會有數字） #}
         {% set net_map = {} %}
         {% if group_enabled and group_summary and group_summary.per_user %}
@@ -92,29 +91,15 @@
 
         <div class="card">
             <h2 style="margin:0 0 10px;">📊 連結帳號合計</h2>
-            <div class="pill">
+            <div class="pill" style="display:inline-flex;">
                 本月總淨利：
-                <b>
+                <b style="margin-left:6px;">
                     {% if group_enabled and group_summary %}
                     {{ group_summary.month_total }}
                     {% else %}
                     —
                     {% endif %}
                 </b>
-            </div>
-        </div>
-
-        {% else %}
-        <div class="card">
-            <p style="margin:0;">目前尚未連結任何帳號</p>
-        </div>
-        {% endif %}
-
-
-        <div class="card">
-            <h2 style="margin:0 0 10px;">📊 連結帳號合計</h2>
-            <div class="pill" style="display:inline-flex;">
-                本月總淨利：<b style="margin-left:6px;">{{ group_summary.month_total }}</b>
             </div>
         </div>
 
