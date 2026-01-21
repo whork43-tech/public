@@ -1458,14 +1458,16 @@ def add_record(
                 with get_conn() as conn:
                     with get_cursor(conn) as cur:
                         cur.execute(
-                            f"INSERT INTO payments (paid_at, amount, record_id, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                            f"INSERT INTO payments (paid_at, amount, record_id, record_name, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
                             (
                                 today_str(),
                                 int(amount or 0),
                                 int(record_id),
+                                name,
                                 user["user_id"],
                             ),
                         )
+
             # ✅ 只要「支出(total_amount)」有填，就記一筆開銷到 expenses
             try:
                 principal = int(total_amount or 0)
