@@ -184,6 +184,7 @@
             </tr>
           </thead>
 
+
           <tbody id="userTbody">
             {% for u in users %}
             <tr class="user-row" data-id="{{ u.id }}" data-username="{{ u.username|lower }}"
@@ -244,12 +245,46 @@
                   </div>
                 </form>
 
+                <form class="act-form" method="post" action="/admin/users/group_activate"
+                  style="display:flex; gap:8px; align-items:center; margin:8px 0 0; flex-wrap:wrap;">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+
+                  <input class="days-input" type="number" name="days" min="1" placeholder="連結功能天數">
+
+                  <div class="quick">
+                    <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
+                    <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
+                    <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
+                    <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
+                    <button class="btn sm" type="submit">設定連結功能</button>
+
+                    {% if u.group_activated_at %}
+                    <button class="btn sm danger" type="submit" name="clear" value="1"
+                      onclick="return confirm('確定要清除連結功能開通時間？');">
+                      清除
+                    </button>
+                    {% endif %}
+                  </div>
+
+                  <div class="muted2" style="width:100%;">
+                    {% if u.group_activated_at %}
+                    連結功能到期：{{ u.group_activated_at }}
+                    {% elif u.group_trial_started_at %}
+                    連結功能試用開始：{{ u.group_trial_started_at }}
+                    {% else %}
+                    連結功能：尚未使用（未啟動試用）
+                    {% endif %}
+                  </div>
+                </form>
+
+
                 <form method="post" action="/admin/users/delete" style="margin:8px 0 0;"
                   onsubmit="return confirm('確定要刪除此帳號？');">
                   <input type="hidden" name="user_id" value="{{ u.id }}">
                   <button class="btn sm danger" type="submit">刪除帳號</button>
                 </form>
               </td>
+
             </tr>
             {% else %}
             <tr>

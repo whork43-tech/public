@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>連結帳號｜月淨利</title>
+    <link rel="stylesheet" href="/static/style.css?v=1003">
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="card topbar">
+            <div>
+                <h2 style="margin:0;">👥 連結帳號｜月淨利</h2>
+                <div class="muted" style="margin-top:6px;">
+                    目前月份：<b>{{ show_ym }}</b>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <label class="muted" style="display:flex; gap:8px; align-items:center;">
+                    月份
+                    <input id="ym" type="month" value="{{ show_ym }}"
+                        style="padding:9px 12px; border:1px solid #ddd; border-radius:10px;">
+                </label>
+                <a class="btn" href="/">← 返回首頁</a>
+            </div>
+        </div>
+
+        {% if group_summary.per_user and group_summary.per_user|length > 0 %}
+
+        {% for u in group_summary.per_user %}
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div>
+                    <div style="font-weight:800; font-size:16px;">
+                        {{ u.display_name if u.display_name else u.username }}
+                    </div>
+                    <div class="muted" style="font-size:13px;">
+                        帳號：{{ u.username }}
+                    </div>
+                </div>
+
+                {% set net = u.month_net %}
+                <div class="pill"
+                    style="border:1px solid #e5e7eb; padding:10px 12px; border-radius:999px;
+               {% if net < 0 %}background:#fff5f5; border-color:#fecaca;{% else %}background:#f0fff4; border-color:#86efac;{% endif %}">
+                    🗓️ 月淨利：<b>{{ net }}</b>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="card">
+            <h2 style="margin:0 0 10px;">📊 連結帳號合計</h2>
+            <div class="pill" style="display:inline-flex;">
+                本月總淨利：<b style="margin-left:6px;">{{ group_summary.month_total }}</b>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="card">
+            <p style="margin:0;">目前尚未連結任何帳號</p>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        (function () {
+            const el = document.getElementById('ym');
+            if (!el) return;
+            el.addEventListener('change', function () {
+                const v = el.value; // YYYY-MM
+                if (!v) return;
+                window.location.href = '/group-month?ym=' + encodeURIComponent(v);
+            });
+        })();
+    </script>
+</body>
+
+</html>

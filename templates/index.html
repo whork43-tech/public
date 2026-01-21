@@ -318,12 +318,21 @@
       <div class="main">
 
         <!-- 功能：新增（跳頁） -->
+        <!-- 功能：新增（跳頁） -->
         <div class="card" style="text-align:center;">
           <h2>功能</h2>
+
           <a class="btn primary" href="/add-page">＋ 新增資料</a>
           <a class="btn" href="/expense-page" style="margin-left:10px;">＋ 新增開銷</a>
           <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
+
+          {% if master_mode %}
+          <a class="btn" href="/group-month" style="margin-left:10px;">
+            👥 連結帳號
+          </a>
+          {% endif %}
         </div>
+
 
         <!-- 顯示功能（集中在同一排） -->
         <div class="card" style="text-align:center;">
@@ -493,118 +502,126 @@
               <h2>今日淨利</h2>
               <p style="font-size: 22px; margin: 0;"><b>{{ today_net }}</b></p>
             </div>
-          </div>
-        </div>
-
-        <!-- 總票面 / 總票面(餘) -->
-        <div id="faceTotalCard" class="is-hidden">
-          <div style="display:flex; gap:14px; align-items:stretch;">
-            <div class="card" style="flex:1; margin:0;">
-              <h2>總票面</h2>
-              <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value }}</b></p>
-            </div>
 
             <div class="card" style="flex:1; margin:0;">
-              <h2>總票面(餘)</h2>
-              <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value_left }}</b></p>
+              <h2>本月淨利</h2>
+              <p style="font-size: 22px; margin: 0;"><b>{{ my_month_net }}</b></p>
             </div>
           </div>
+
         </div>
-
-        <!-- 今日開銷 -->
-        <div class="card is-hidden" id="expenseCard">
-          <h2>今日開銷</h2>
-
-          <form method="post" action="/expense/delete-multiple" id="expenseBulkForm">
-            <div
-              style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap;">
-              <label style="display:flex; align-items:center; gap:6px;">
-                <input id="expenseSelectAll" type="checkbox" onclick="toggleExpenseAll(this)">
-                全選
-              </label>
-
-              <div class="muted" id="expensePicked">已勾選 0 筆</div>
-
-              <button type="submit" class="btn danger" onclick="return confirmExpenseBulk();">
-                刪除勾選
-              </button>
-            </div>
-
-            <ul>
-              {% for e in today_expenses %}
-              <li style="display:flex; align-items:center; gap:8px;">
-                <input type="checkbox" name="expense_ids" value="{{ e.id }}" onchange="updateExpensePicked()">
-                <span>• {{ e.item }}：{{ e.amount }}</span>
-              </li>
-              {% endfor %}
-            </ul>
-          </form>
-        </div>
-
-        <!-- 通知 -->
-        <div class="card">
-          <h2>通知</h2>
-
-          <h3>今日收款</h3>
-          {% if today_due_records|length == 0 %}
-          <p>今天沒有到期的繳款</p>
-          {% else %}
-          <ul class="notice-list">
-            {% for r in today_due_records %}
-            <li>
-              🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
-              <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-                <button class="btn" type="submit">已繳款</button>
-              </form>
-            </li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-
-          <h3>明日收款</h3>
-          {% set ns = namespace(has_tomorrow=false) %}
-          <ul class="notice-list">
-            {% for r in rows %}
-            {% if r.days_left == 1 and (r.paid_count < r.periods) %} {% set ns.has_tomorrow=true %} <li>⏳ {{ r.name
-              }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
-              {% endif %}
-              {% endfor %}
-          </ul>
-          {% if not ns.has_tomorrow %}
-          <p>明天沒有到期的收款</p>
-          {% endif %}
-
-          <h3>逾期</h3>
-          {% if overdue_records|length == 0 %}
-          <p>目前沒有逾期</p>
-          {% else %}
-          <ul class="notice-list">
-            {% for r in overdue_records %}
-            <li>
-              {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
-              {% set delta = -r.days_left %}
-              {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
-              {% set remaining = (r.periods - r.paid_count) %}
-              {% if remaining < 0 %}{% set remaining=0 %}{% endif %} {% set overdue_periods=overdue_raw if overdue_raw <
-                remaining else remaining %} ❗ {{ r.name }}（逾期 {{ overdue_periods }} 期） <form action="/pay/{{ r.id }}"
-                method="post" style="display:inline-flex; align-items:center; gap:6px;">
-                (
-                <input type="number" name="periods" min="1" value="1" style="width:60px; padding:4px;" placeholder="期數"
-                  required>
-                )
-                <button class="btn" type="submit">補繳</button>
-                </form>
-            </li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-        </div>
-
       </div>
-    </div>
-    {% endif %}
 
-    {% endif %}
+      <!-- 總票面 / 總票面(餘) -->
+      <div id="faceTotalCard" class="is-hidden">
+        <div style="display:flex; gap:14px; align-items:stretch;">
+          <div class="card" style="flex:1; margin:0;">
+            <h2>總票面</h2>
+            <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value }}</b></p>
+          </div>
+
+          <div class="card" style="flex:1; margin:0;">
+            <h2>總票面(餘)</h2>
+            <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value_left }}</b></p>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- 今日開銷 -->
+      <div class="card is-hidden" id="expenseCard">
+        <h2>今日開銷</h2>
+
+        <form method="post" action="/expense/delete-multiple" id="expenseBulkForm">
+          <div
+            style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:6px;">
+              <input id="expenseSelectAll" type="checkbox" onclick="toggleExpenseAll(this)">
+              全選
+            </label>
+
+            <div class="muted" id="expensePicked">已勾選 0 筆</div>
+
+            <button type="submit" class="btn danger" onclick="return confirmExpenseBulk();">
+              刪除勾選
+            </button>
+          </div>
+
+          <ul>
+            {% for e in today_expenses %}
+            <li style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" name="expense_ids" value="{{ e.id }}" onchange="updateExpensePicked()">
+              <span>• {{ e.item }}：{{ e.amount }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </form>
+      </div>
+
+      <!-- 通知 -->
+      <div class="card">
+        <h2>通知</h2>
+
+        <h3>今日收款</h3>
+        {% if today_due_records|length == 0 %}
+        <p>今天沒有到期的繳款</p>
+        {% else %}
+        <ul class="notice-list">
+          {% for r in today_due_records %}
+          <li>
+            🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
+            <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
+              <button class="btn" type="submit">已繳款</button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        <h3>明日收款</h3>
+        {% set ns = namespace(has_tomorrow=false) %}
+        <ul class="notice-list">
+          {% for r in rows %}
+          {% if r.days_left == 1 and (r.paid_count < r.periods) %} {% set ns.has_tomorrow=true %} <li>⏳ {{ r.name
+            }}（明天到期，第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）</li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+        {% if not ns.has_tomorrow %}
+        <p>明天沒有到期的收款</p>
+        {% endif %}
+
+        <h3>逾期</h3>
+        {% if overdue_records|length == 0 %}
+        <p>目前沒有逾期</p>
+        {% else %}
+        <ul class="notice-list">
+          {% for r in overdue_records %}
+          <li>
+            {% set interval = r.interval_days if r.interval_days and r.interval_days > 0 else 1 %}
+            {% set delta = -r.days_left %}
+            {% set overdue_raw = ((delta - 1) // interval + 1) if delta > 0 else 0 %}
+            {% set remaining = (r.periods - r.paid_count) %}
+            {% if remaining < 0 %}{% set remaining=0 %}{% endif %} {% set overdue_periods=overdue_raw if overdue_raw <
+              remaining else remaining %} ❗ {{ r.name }}（逾期 {{ overdue_periods }} 期） <form action="/pay/{{ r.id }}"
+              method="post" style="display:inline-flex; align-items:center; gap:6px;">
+              (
+              <input type="number" name="periods" min="1" value="1" style="width:60px; padding:4px;" placeholder="期數"
+                required>
+              )
+              <button class="btn" type="submit">補繳</button>
+              </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}
   </div>
 
   <script>
