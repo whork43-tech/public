@@ -4,10 +4,8 @@ import hashlib
 import sqlite3
 from urllib.parse import quote
 from contextlib import contextmanager
-from datetime import date, datetime
-from typing import List
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
-from datetime import date, timedelta
 
 import psycopg
 from psycopg.rows import tuple_row
@@ -224,94 +222,173 @@ ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT
 """
                 )
 
-            # ========== RECORDS ==========
-            cur.execute(
-                """
-            CREATE TABLE IF NOT EXISTS records (
-                id SERIAL PRIMARY KEY,
-                created_date DATE NOT NULL,
-                name TEXT NOT NULL,
-                face_value INTEGER NOT NULL DEFAULT 0,
-                total_amount INTEGER NOT NULL,
-                periods INTEGER NOT NULL,
-                amount INTEGER NOT NULL,
-                interval_days INTEGER NOT NULL,
-                paid_count INTEGER NOT NULL DEFAULT 0,
-                last_paid_day INTEGER NOT NULL DEFAULT 0,
-                user_id INTEGER NOT NULL
-                    REFERENCES users(id)
-                    ON DELETE CASCADE
-            );
-            """
-            )
-
-            cur.execute(
-                """
-            ALTER TABLE records
-            ADD COLUMN IF NOT EXISTS use_face_value BOOLEAN NOT NULL DEFAULT TRUE
-            """
-            )
-
-            # is_deleted（SQLite / Postgres 都支援 IF NOT EXISTS）
-            cur.execute(
-                """
-            ALTER TABLE records
-            ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
-            """
-            )
-
-            cur.execute(
-                """
-            ALTER TABLE records
-            ADD COLUMN IF NOT EXISTS ticket_offset INTEGER NOT NULL DEFAULT 0;
-            """
-            )
-
-            cur.execute(
-                """
-            ALTER TABLE records
-            ADD COLUMN IF NOT EXISTS expense_offset INTEGER NOT NULL DEFAULT 0;
-            """
-            )
-
-            # ========== PAYMENTS ==========
-            cur.execute(
-                """
-            CREATE TABLE IF NOT EXISTS payments (
-                id SERIAL PRIMARY KEY,
-                paid_at DATE NOT NULL,
-                amount INTEGER NOT NULL,
-                record_id INTEGER NOT NULL
-                    REFERENCES records(id)
-                    ON DELETE CASCADE,
-                user_id INTEGER NOT NULL
-                    REFERENCES users(id)
-                    ON DELETE CASCADE
+                # ========== RECORDS ==========
+            if IS_SQLITE:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_date DATE NOT NULL,
+                        name TEXT NOT NULL,
+                        face_value INTEGER NOT NULL DEFAULT 0,
+                        total_amount INTEGER NOT NULL,
+                        periods INTEGER NOT NULL,
+                        amount INTEGER NOT NULL,
+                        interval_days INTEGER NOT NULL,
+                        paid_count INTEGER NOT NULL DEFAULT 0,
+                        last_paid_day INTEGER NOT NULL DEFAULT 0,
+                        user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE
                     );
                     """
-            )
-            # ✅ payments 補 record_name 欄位（Postgres OK；SQLite 如果不支援 IF NOT EXISTS 再做判斷版）
-            cur.execute(
-                """
-                ALTER TABLE payments
-                ADD COLUMN IF NOT EXISTS record_name TEXT
-                """
-            )
+                )
+
+                # SQLite：用 PRAGMA 檢查欄位再 ADD COLUMN（避免 IF NOT EXISTS 語法不支援）
+                if not _sqlite_has_column(cur, "records", "use_face_value"):
+                    cur.execute(
+                        "ALTER TABLE records ADD COLUMN use_face_value BOOLEAN NOT NULL DEFAULT 1"
+                    )
+                if not _sqlite_has_column(cur, "records", "is_deleted"):
+                    cur.execute(
+                        "ALTER TABLE records ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                if not _sqlite_has_column(cur, "records", "ticket_offset"):
+                    cur.execute(
+                        "ALTER TABLE records ADD COLUMN ticket_offset INTEGER NOT NULL DEFAULT 0"
+                    )
+                if not _sqlite_has_column(cur, "records", "expense_offset"):
+                    cur.execute(
+                        "ALTER TABLE records ADD COLUMN expense_offset INTEGER NOT NULL DEFAULT 0"
+                    )
+
+            else:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS records (
+                        id SERIAL PRIMARY KEY,
+                        created_date DATE NOT NULL,
+                        name TEXT NOT NULL,
+                        face_value INTEGER NOT NULL DEFAULT 0,
+                        total_amount INTEGER NOT NULL,
+                        periods INTEGER NOT NULL,
+                        amount INTEGER NOT NULL,
+                        interval_days INTEGER NOT NULL,
+                        paid_count INTEGER NOT NULL DEFAULT 0,
+                        last_paid_day INTEGER NOT NULL DEFAULT 0,
+                        user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE
+                    );
+                    """
+                )
+
+                # Postgres：可用 IF NOT EXISTS
+                cur.execute(
+                    """
+                    ALTER TABLE records
+                    ADD COLUMN IF NOT EXISTS use_face_value BOOLEAN NOT NULL DEFAULT TRUE
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE records
+                    ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE records
+                    ADD COLUMN IF NOT EXISTS ticket_offset INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE records
+                    ADD COLUMN IF NOT EXISTS expense_offset INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+
+            # ========== PAYMENTS ==========
+            if IS_SQLITE:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS payments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        paid_at DATE NOT NULL,
+                        amount INTEGER NOT NULL,
+                        record_id INTEGER NOT NULL
+                            REFERENCES records(id)
+                            ON DELETE CASCADE,
+                        record_name TEXT NOT NULL DEFAULT '',
+                        user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE
+                    );
+                    """
+                )
+
+                # 舊資料庫可能沒有 record_name：補欄位
+                if not _sqlite_has_column(cur, "payments", "record_name"):
+                    cur.execute(
+                        "ALTER TABLE payments ADD COLUMN record_name TEXT NOT NULL DEFAULT ''"
+                    )
+
+            else:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS payments (
+                        id SERIAL PRIMARY KEY,
+                        paid_at DATE NOT NULL,
+                        amount INTEGER NOT NULL,
+                        record_id INTEGER NOT NULL
+                            REFERENCES records(id)
+                            ON DELETE CASCADE,
+                        record_name TEXT NOT NULL DEFAULT '',
+                        user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE
+                    );
+                    """
+                )
+
+                # 舊資料庫可能沒有 record_name：補欄位
+                cur.execute(
+                    """
+                    ALTER TABLE payments
+                    ADD COLUMN IF NOT EXISTS record_name TEXT NOT NULL DEFAULT ''
+                    """
+                )
 
             # ========== EXPENSES ==========
-            cur.execute(
-                """
-            CREATE TABLE IF NOT EXISTS expenses (
-                id SERIAL PRIMARY KEY,
-                spent_at DATE NOT NULL,
-                item TEXT NOT NULL,
-                amount INTEGER NOT NULL,
-                user_id INTEGER NOT NULL
-                    REFERENCES users(id)
-                    ON DELETE CASCADE
-            );
-            """
-            )
+            if IS_SQLITE:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS expenses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        spent_at DATE NOT NULL,
+                        item TEXT NOT NULL,
+                        amount INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE
+                    );
+                    """
+                )
+            else:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS expenses (
+                        id SERIAL PRIMARY KEY,
+                        spent_at DATE NOT NULL,
+                        item TEXT NOT NULL,
+                        amount INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL
+                            REFERENCES users(id)
+                            ON DELETE CASCADE
+                    );
+                    """
+                )
 
             # ========== ACCOUNT LINKS (Master -> Child) ==========
             # 主帳號可以看到子帳號的彙總數字（不影響各帳號原本資料與功能）
@@ -579,9 +656,20 @@ def get_child_user_ids(master_user_id: int) -> list[int]:
     return out
 
 
+def is_child_user(user_id: int) -> bool:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT 1 FROM account_links WHERE child_user_id = {PH} LIMIT 1",
+                (user_id,),
+            )
+            row = cur.fetchone()
+    return bool(row)
+
+
 def is_master_user(user_id: int) -> bool:
-    # 有任何 child 連動，就視為主帳號
-    return len(get_child_user_ids(user_id)) > 0
+    # 沒有被別人連結成子帳號，就允許當主帳號（是否「付費/試用可用」再交給 group access 判斷）
+    return not is_child_user(user_id)
 
 
 def compute_user_face_totals(user_id: int) -> tuple[int, int]:
@@ -1161,6 +1249,14 @@ def home(request: Request):
     overdue_records = [r for r in rows if r["is_overdue"]]
     due_today_count = len(today_due_records)
 
+    tomorrow_due_records = [
+        r for r in rows if (r["days_left"] == 1) and (not r["finished"])
+    ]
+
+    today_due = len(today_due_records)
+    tomorrow_due = len(tomorrow_due_records)
+    overdue = len(overdue_records)
+
     # ✅ 今日總收 / 今日開銷
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
@@ -1185,29 +1281,39 @@ def home(request: Request):
         if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
     )
 
+    if user and master_mode:
+        group_access_ok, group_access_mode, group_access_until = (
+            get_group_access_status(user["user_id"])
+        )
+    else:
+        group_access_ok, group_access_mode, group_access_until = (False, "child", None)
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "user": user,
             "paid_msg": paid_msg,
+            # 付費/試用狀態
             "access_ok": access_ok,
             "access_until": (access_until.isoformat() if access_until else ""),
             "access_mode": access_mode,
-            "paid_id": paid_id,
+            # 清單資料（通知/主列表會用到）
             "rows": rows,
             "today_due_records": today_due_records,
             "overdue_records": overdue_records,
-            "due_today_count": due_today_count,
+            # 右欄統計
             "today_total": today_total,
             "today_expense_total": today_expense_total,
             "today_expenses": today_expenses,
-            "today_total": today_total,
-            "total_face_value": total_face_value,
             "today_net": today_net,
-            "total_face_value_left": total_face_value_left,
-            "master_mode": master_mode,
             "my_month_net": my_month_net,
+            "total_face_value": total_face_value,
+            "total_face_value_left": total_face_value_left,
+            # 其他（你要留也行，不會漏）
+            "paid_id": paid_id,
+            "master_mode": master_mode,
+            "due_today_count": due_today_count,
         },
     )
 
@@ -1588,17 +1694,6 @@ def admin_links_page(request: Request):
                 """
             )
             rows = cur.fetchall()
-
-    lines = []
-    for r in rows:
-        if isinstance(r, sqlite3.Row):
-            rid = r["id"]
-            master = f'{r["master_user_id"]} / {r["username"]} / {r["display_name"]}'
-            child = f'{r["child_user_id"]} / {r["username_1"] if "username_1" in r.keys() else r["username"]}'
-        else:
-            rid = r[0]
-            master = f"{r[1]} / {r[2]} / {r[3]}"
-            child = f"{r[4]} / {r[5]} / {r[6]}"
 
         # sqlite row 欄位名在 join 可能不穩，簡單用 tuple 方式處理更穩
     # 改用 tuple 方式重新組一次（更穩定）
