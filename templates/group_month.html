@@ -29,29 +29,87 @@
             </div>
         </div>
 
-        {% if group_summary.per_user and group_summary.per_user|length > 0 %}
+        {% if not group_enabled %}
+        <div class="card danger" style="margin-top:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                <div>
+                    <b>⚠ 連結帳號功能未開通</b>
+                    <div class="muted" style="margin-top:6px;">
+                        {% if group_mode == 'trial' %}
+                        試用中（到期日：{{ group_until }}）
+                        {% else %}
+                        {{ group_msg }}
+                        {% endif %}
+                    </div>
+                </div>
+                <span class="badge-danger">未開通</span>
+            </div>
+        </div>
+        {% endif %}
 
+
+        {# 建立 month_net 對照表：user_id -> month_net（只有開通才會有數字） #}
+        {% set net_map = {} %}
+        {% if group_enabled and group_summary and group_summary.per_user %}
         {% for u in group_summary.per_user %}
-        <div class="card">
+        {% set _ = net_map.update({u.user_id: u.month_net}) %}
+        {% endfor %}
+        {% endif %}
+
+        {% if linked_accounts and linked_accounts|length > 0 %}
+
+        {% for a in linked_accounts %}
+        {% set is_inactive = (not a.main_active) %}
+        <div class="card {% if is_inactive %}danger{% endif %}">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
                 <div>
                     <div style="font-weight:800; font-size:16px;">
-                        {{ u.display_name if u.display_name else u.username }}
+                        {{ a.display_name if a.display_name else a.username }}
+                        {% if is_inactive %}
+                        <span class="badge-danger" style="margin-left:8px;">未開通</span>
+                        {% else %}
+                        <span class="badge-ok" style="margin-left:8px;">已開通</span>
+                        {% endif %}
                     </div>
                     <div class="muted" style="font-size:13px;">
-                        帳號：{{ u.username }}
+                        帳號：{{ a.username }}　｜　ID：{{ a.user_id }}
                     </div>
                 </div>
 
-                {% set net = u.month_net %}
-                <div class="pill"
-                    style="border:1px solid #e5e7eb; padding:10px 12px; border-radius:999px;
-               {% if net < 0 %}background:#fff5f5; border-color:#fecaca;{% else %}background:#f0fff4; border-color:#86efac;{% endif %}">
-                    🗓️ 月淨利：<b>{{ net }}</b>
+                <div class="pill">
+                    🗓️ 月淨利：
+                    <b>
+                        {% if group_enabled %}
+                        {{ net_map.get(a.user_id, 0) }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </b>
                 </div>
             </div>
         </div>
         {% endfor %}
+
+        <div class="card">
+            <h2 style="margin:0 0 10px;">📊 連結帳號合計</h2>
+            <div class="pill">
+                本月總淨利：
+                <b>
+                    {% if group_enabled and group_summary %}
+                    {{ group_summary.month_total }}
+                    {% else %}
+                    —
+                    {% endif %}
+                </b>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="card">
+            <p style="margin:0;">目前尚未連結任何帳號</p>
+        </div>
+        {% endif %}
+
 
         <div class="card">
             <h2 style="margin:0 0 10px;">📊 連結帳號合計</h2>

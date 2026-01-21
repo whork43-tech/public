@@ -132,6 +132,24 @@
           <span class="pill">⛔ 未開通 <b>{{ users|rejectattr('activated_at')|list|length }}</b></span>
         </div>
 
+        {% if not group_enabled %}
+        <div class="card danger" style="margin-top:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div>
+              <b>⚠ 連結帳號功能未開通</b>
+              <div class="muted" style="margin-top:6px;">
+                {% if group_mode == 'trial' %}
+                試用中（到期日：{{ group_until }}）
+                {% else %}
+                {{ group_msg }}
+                {% endif %}
+              </div>
+            </div>
+            <span class="badge-danger">未開通</span>
+          </div>
+        </div>
+        {% endif %}
+
         <a class="btn" href="/">回首頁</a>
       </div>
 

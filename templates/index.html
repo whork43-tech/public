@@ -505,78 +505,78 @@
 
             <div class="card" style="flex:1; margin:0;">
               <h2>本月淨利</h2>
-              <p style="font-size: 22px; margin: 0;"><b>{{ my_month_net }}</b></p>
+              <p style="font-size: 22px; margin: 0;"><b>{{ my_month_net|default(0) }}</b></p>
+            </div>
+          </div>
+          <!-- 總票面 / 總票面(餘) -->
+          <div id="faceTotalCard" class="is-hidden">
+            <div style="display:flex; gap:14px; align-items:stretch;">
+              <div class="card" style="flex:1; margin:0;">
+                <h2>總票面</h2>
+                <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value }}</b></p>
+              </div>
+
+              <div class="card" style="flex:1; margin:0;">
+                <h2>總票面(餘)</h2>
+                <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value_left }}</b></p>
+              </div>
             </div>
           </div>
 
-        </div>
-      </div>
 
-      <!-- 總票面 / 總票面(餘) -->
-      <div id="faceTotalCard" class="is-hidden">
-        <div style="display:flex; gap:14px; align-items:stretch;">
-          <div class="card" style="flex:1; margin:0;">
-            <h2>總票面</h2>
-            <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value }}</b></p>
-          </div>
+          <!-- 今日開銷 -->
+          <div class="card is-hidden" id="expenseCard">
+            <h2>今日開銷</h2>
 
-          <div class="card" style="flex:1; margin:0;">
-            <h2>總票面(餘)</h2>
-            <p style="font-size: 22px; margin: 0;"><b>{{ total_face_value_left }}</b></p>
-          </div>
-        </div>
-      </div>
+            <form method="post" action="/expense/delete-multiple" id="expenseBulkForm">
+              <div
+                style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap;">
+                <label style="display:flex; align-items:center; gap:6px;">
+                  <input id="expenseSelectAll" type="checkbox" onclick="toggleExpenseAll(this)">
+                  全選
+                </label>
 
+                <div class="muted" id="expensePicked">已勾選 0 筆</div>
 
-      <!-- 今日開銷 -->
-      <div class="card is-hidden" id="expenseCard">
-        <h2>今日開銷</h2>
+                <button type="submit" class="btn danger" onclick="return confirmExpenseBulk();">
+                  刪除勾選
+                </button>
+              </div>
 
-        <form method="post" action="/expense/delete-multiple" id="expenseBulkForm">
-          <div
-            style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap;">
-            <label style="display:flex; align-items:center; gap:6px;">
-              <input id="expenseSelectAll" type="checkbox" onclick="toggleExpenseAll(this)">
-              全選
-            </label>
-
-            <div class="muted" id="expensePicked">已勾選 0 筆</div>
-
-            <button type="submit" class="btn danger" onclick="return confirmExpenseBulk();">
-              刪除勾選
-            </button>
-          </div>
-
-          <ul>
-            {% for e in today_expenses %}
-            <li style="display:flex; align-items:center; gap:8px;">
-              <input type="checkbox" name="expense_ids" value="{{ e.id }}" onchange="updateExpensePicked()">
-              <span>• {{ e.item }}：{{ e.amount }}</span>
-            </li>
-            {% endfor %}
-          </ul>
-        </form>
-      </div>
-
-      <!-- 通知 -->
-      <div class="card">
-        <h2>通知</h2>
-
-        <h3>今日收款</h3>
-        {% if today_due_records|length == 0 %}
-        <p>今天沒有到期的繳款</p>
-        {% else %}
-        <ul class="notice-list">
-          {% for r in today_due_records %}
-          <li>
-            🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
-            <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
-              <button class="btn" type="submit">已繳款</button>
+              <ul>
+                {% for e in today_expenses %}
+                <li style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" name="expense_ids" value="{{ e.id }}" onchange="updateExpensePicked()">
+                  <span>• {{ e.item }}：{{ e.amount }}</span>
+                </li>
+                {% endfor %}
+              </ul>
             </form>
-          </li>
-          {% endfor %}
-        </ul>
-        {% endif %}
+          </div>
+
+          <!-- 通知 -->
+          <div class="card">
+            <h2>通知</h2>
+
+            <h3>今日收款</h3>
+            {% if today_due_records|length == 0 %}
+            <p>今天沒有到期的繳款</p>
+            {% else %}
+            <ul class="notice-list">
+              {% for r in today_due_records %}
+              <li>
+                🔔 {{ r.name }}（第 {{ r.paid_count + 1 }} / {{ r.periods }} 期，{{ r.amount }} 元）
+                <form action="/pay/{{ r.id }}" method="post" style="display:inline;">
+                  <button class="btn" type="submit">已繳款</button>
+                </form>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </div>
+        </div>
+
+
 
         <h3>明日收款</h3>
         {% set ns = namespace(has_tomorrow=false) %}
