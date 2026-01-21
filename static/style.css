@@ -51,8 +51,23 @@ h3 {
   font-weight: 700;
 }
 
-/* ====== Layout: left main + right side ====== */
 
+/* ====== Layout: left main + right side ====== */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  /* 左大右小 */
+  gap: 16px;
+  align-items: start;
+}
+
+.main {
+  min-width: 0;
+}
+
+.side {
+  min-width: 0;
+}
 
 @media (max-width: 980px) {
   .layout {
@@ -357,4 +372,30 @@ h3 {
   .card[style*="justify-content:space-between"] .btn {
     width: auto;
   }
+}
+
+/* 紅底警示卡（未開通） */
+.card.danger {
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+}
+
+.badge-danger {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge-ok {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  font-size: 12px;
+  font-weight: 700;
 }
