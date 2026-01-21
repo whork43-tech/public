@@ -287,8 +287,15 @@ ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT
                 user_id INTEGER NOT NULL
                     REFERENCES users(id)
                     ON DELETE CASCADE
-            );
-            """
+                    );
+                    """
+            )
+            # ✅ payments 補 record_name 欄位（Postgres OK；SQLite 如果不支援 IF NOT EXISTS 再做判斷版）
+            cur.execute(
+                """
+                ALTER TABLE payments
+                ADD COLUMN IF NOT EXISTS record_name TEXT
+                """
             )
 
             # ========== EXPENSES ==========
@@ -1375,36 +1382,38 @@ def add_record(
 
     init_db()
 
-    # ✅ checkbox 轉 bool（這段就是你問的「要補在哪裡」：放在 init_db 後面）
+    # checkbox -> bool
     as_period1_b = as_period1 == "1"
     use_face_value_b = use_face_value == "1"
     deduct_first_period_expense_b = deduct_first_period_expense == "1"
     count_today_b = count_today == "1"
+    ticket_deduct_one_b = ticket_deduct_one == "1"
 
     face_value_effective = int(face_value or 0)
 
-    # ✅ 支出：你說「支出=每期金額，勾選就扣第一期」=> total_amount 先加一個 amount
+    # 你原本規則：勾「扣第一期」就把 total_amount_effective 加上一期 amount
     total_amount_effective = int(total_amount or 0)
     if deduct_first_period_expense_b:
         total_amount_effective += int(amount or 0)
 
-    # ✅ 期：勾選就等於已經算第1期
+    # paid_count：勾「算第一期」就視為已繳一期（維持你原本設計）
     paid_count = 1 if as_period1_b else 0
+    last_paid_day = 0  # 維持你原本：建立日不算收款日
 
-    # ✅ 這個設計維持你原本規則：建立日不算收款日
-    last_paid_day = 0
-
-    ticket_deduct_one_b = ticket_deduct_one == "1"
-
-    # ✅ 支出勾選：扣支出餘（而不是票面餘）
+    # offset（維持你原本欄位）
     expense_offset = int(amount or 0) if ticket_deduct_one_b else 0
-
-    # ✅ 勾「票」：扣票面餘（注意：用 use_face_value_b，不是用支出勾選）
     ticket_offset = int(amount or 0) if use_face_value_b else 0
+
+    # ✅ 你說「填寫支出就算入今日開銷」：支出以使用者填的 total_amount 原值為準（不含你加的一期）
+    principal = 0
+    try:
+        principal = int(total_amount or 0)
+    except Exception:
+        principal = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            # 先寫 records，拿 record_id
+            # 1) 新增 records，取得 record_id
             if IS_SQLITE:
                 cur.execute(
                     f"""
@@ -1453,37 +1462,35 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-            # ✅ 勾「是否算入今日實收」→ 直接記一筆今天收款
+            # 2) ✅ 勾「是否算入今日實收」→ 寫入 payments（同一個 conn，避免外鍵炸）
             if count_today_b:
-                with get_conn() as conn:
-                    with get_cursor(conn) as cur:
-                        cur.execute(
-                            f"INSERT INTO payments (paid_at, amount, record_id, record_name, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
-                            (
-                                today_str(),
-                                int(amount or 0),
-                                int(record_id),
-                                name,
-                                user["user_id"],
-                            ),
-                        )
+                cur.execute(
+                    f"""
+                    INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
+                    """,
+                    (
+                        today_str(),
+                        int(amount or 0),
+                        int(record_id),
+                        name,
+                        user["user_id"],
+                    ),
+                )
 
-            # ✅ 只要「支出(total_amount)」有填，就記一筆開銷到 expenses
-            try:
-                principal = int(total_amount or 0)
-            except Exception:
-                principal = 0
-
+            # 3) ✅ 只要「支出(total_amount)」有填且 >0 → 記一筆 expenses（算入當日開銷）
             if principal > 0:
                 spent_day = created_date or today_str()
-                # 用建立日當作支出日期；沒填就用今天
-                with get_conn() as conn:
-                    with get_cursor(conn) as cur:
-                        cur.execute(
-                            f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                            (spent_day, f"{name}（支出）", principal, user["user_id"]),
-                        )
-                    conn.commit()
+                cur.execute(
+                    f"""
+                    INSERT INTO expenses (spent_at, item, amount, user_id)
+                    VALUES ({PH}, {PH}, {PH}, {PH})
+                    """,
+                    (spent_day, f"{name}（支出）", principal, user["user_id"]),
+                )
+
+        # ✅ 最後只 commit 一次
+        conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
 
@@ -1499,18 +1506,10 @@ def group_month(request: Request):
     if not is_master_user(user["user_id"]):
         return RedirectResponse("/", status_code=303)
 
-    # ✅ 連結帳號功能：需另外開通
-    ok, msg, _until = get_group_access_status(user["user_id"])
-    if not ok:
-        return RedirectResponse(url="/?paid_msg=" + quote(msg), status_code=303)
-
-    # 只有 master 才能看
-    if not is_master_user(user["user_id"]):
-        return RedirectResponse("/", status_code=303)
-
-    # 連結功能：7天試用 + 付費
+    # 連結功能：7天試用 + 付費（回傳 4 個值）
     ok, mode, until, msg = get_group_access_status(user["user_id"])
-    group_enabled = bool(ok)  # ✅ True 才顯示金額
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
 
     # ym=YYYY-MM（不給就用當月）
     ym = (request.query_params.get("ym") or "").strip()
@@ -1523,7 +1522,6 @@ def group_month(request: Request):
             year = month = None
 
     group_summary = compute_group_summary(user["user_id"], year=year, month=month)
-    linked_accounts = get_linked_accounts(user["user_id"])
 
     today = date.fromisoformat(today_str())
     show_y = year or today.year
@@ -1535,18 +1533,11 @@ def group_month(request: Request):
         {
             "request": request,
             "user": user,
+            "group_summary": group_summary,
             "show_ym": show_ym,
-            "linked_accounts": linked_accounts,
-            "group_enabled": group_enabled,
             "group_mode": mode,
             "group_until": (until.isoformat() if until else ""),
             "group_msg": msg,
-            # ✅ 只有 group_enabled 才計算金額
-            "group_summary": (
-                compute_group_summary(user["user_id"], year=year, month=month)
-                if group_enabled
-                else None
-            ),
         },
     )
 
