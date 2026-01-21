@@ -1282,11 +1282,16 @@ def home(request: Request):
     )
 
     if user and master_mode:
-        group_access_ok, group_access_mode, group_access_until = (
+        group_access_ok, group_access_mode, group_access_until, group_access_msg = (
             get_group_access_status(user["user_id"])
         )
     else:
-        group_access_ok, group_access_mode, group_access_until = (False, "child", None)
+        group_access_ok, group_access_mode, group_access_until, group_access_msg = (
+            False,
+            "child",
+            None,
+            "",
+        )
 
     return templates.TemplateResponse(
         "index.html",
@@ -1314,6 +1319,11 @@ def home(request: Request):
             "paid_id": paid_id,
             "master_mode": master_mode,
             "due_today_count": due_today_count,
+            "group_access_ok": group_access_ok,
+            "group_access_mode": group_access_mode,
+            "group_access_until": (
+                group_access_until.isoformat() if group_access_until else ""
+            ),
         },
     )
 
