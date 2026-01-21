@@ -1622,10 +1622,9 @@ def group_month(request: Request):
     if not is_master_user(user["user_id"]):
         return RedirectResponse("/", status_code=303)
 
-    # 連結功能：7天試用 + 付費（回傳 4 個值）
+    # 連結功能狀態（回傳 4 個值）
     ok, mode, until, msg = get_group_access_status(user["user_id"])
-    if not ok:
-        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+    group_enabled = bool(ok)
 
     # ym=YYYY-MM（不給就用當月）
     ym = (request.query_params.get("ym") or "").strip()
@@ -1637,23 +1636,31 @@ def group_month(request: Request):
         except Exception:
             year = month = None
 
-    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
-
     today = date.fromisoformat(today_str())
     show_y = year or today.year
     show_m = month or today.month
     show_ym = f"{show_y:04d}-{show_m:02d}"
+
+    # ✅ 一定要傳：已連結帳號清單（不管有沒有開通）
+    linked_accounts = get_linked_accounts(user["user_id"])
+
+    # ✅ 只有開通才計算淨利；未開通就給空值（模板會顯示 —）
+    group_summary = {"month_total": 0, "per_user": []}
+    if group_enabled:
+        group_summary = compute_group_summary(user["user_id"], year=year, month=month)
 
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
-            "group_summary": group_summary,
             "show_ym": show_ym,
+            "group_enabled": group_enabled,
             "group_mode": mode,
             "group_until": (until.isoformat() if until else ""),
             "group_msg": msg,
+            "linked_accounts": linked_accounts,
+            "group_summary": group_summary,
         },
     )
 
