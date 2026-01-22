@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>連結帳號｜月淨利</title>
+    <title>連結帳號</title>
     <link rel="stylesheet" href="/static/style.css?v=1003">
 </head>
 
@@ -13,115 +13,56 @@
 
         <div class="card topbar">
             <div>
-                <h2 style="margin:0;">👥 連結帳號｜月淨利</h2>
-                <div class="muted" style="margin-top:6px;">
-                    目前月份：<b>{{ show_ym }}</b>
-                </div>
+                <h2 style="margin:0;">👥 連結帳號</h2>
+                <div class="muted" style="margin-top:6px;">主帳號：<b>{{ user.display_name or user.username }}</b></div>
             </div>
-
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <label class="muted" style="display:flex; gap:8px; align-items:center;">
-                    月份
-                    <input id="ym" type="month" value="{{ show_ym }}"
-                        style="padding:9px 12px; border:1px solid #ddd; border-radius:10px;">
-                </label>
                 <a class="btn" href="/">← 返回首頁</a>
             </div>
         </div>
 
-        {% if not group_enabled %}
-        <div class="card danger" style="margin-top:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-                <div>
-                    <b>⚠ 連結帳號功能未開通</b>
-                    <div class="muted" style="margin-top:6px;">
-                        {% if group_mode == 'trial' %}
-                        試用中（到期日：{{ group_until }}）
-                        {% else %}
-                        {{ group_msg }}
-                        {% endif %}
-                    </div>
-                </div>
-                <span class="badge-danger">未開通</span>
-            </div>
-        </div>
-        {% endif %}
-
-        {# 建立 month_net 對照表：user_id -> month_net（只有開通才會有數字） #}
-        {% set net_map = {} %}
-        {% if group_enabled and group_summary and group_summary.per_user %}
-        {% for u in group_summary.per_user %}
-        {% set _ = net_map.update({u.user_id: u.month_net}) %}
-        {% endfor %}
-        {% endif %}
-
-        {% if linked_accounts and linked_accounts|length > 0 %}
-
-        {% for a in linked_accounts %}
-        {% set is_inactive = (not a.main_active) %}
-        <div class="card {% if is_inactive %}danger{% endif %}">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-                <div>
-                    <div style="font-weight:800; font-size:16px;">
-                        {{ a.display_name if a.display_name else a.username }}
-                        {% if is_inactive %}
-                        <span class="badge-danger" style="margin-left:8px;">未開通</span>
-                        {% else %}
-                        <span class="badge-ok" style="margin-left:8px;">已開通</span>
-                        {% endif %}
-                    </div>
-                    <div class="muted" style="font-size:13px;">
-                        帳號：{{ a.username }}　｜　ID：{{ a.user_id }}
-                    </div>
-                </div>
-
-                <div class="pill">
-                    🗓️ 月淨利：
-                    <b>
-                        {% if group_enabled %}
-                        {{ net_map.get(a.user_id, 0) }}
-                        {% else %}
-                        —
-                        {% endif %}
-                    </b>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-
+        {% if msg %}
         <div class="card">
-            <h2 style="margin:0 0 10px;">📊 連結帳號合計</h2>
-            <div class="pill" style="display:inline-flex;">
-                本月總淨利：
-                <b style="margin-left:6px;">
-                    {% if group_enabled and group_summary %}
-                    {{ group_summary.month_total }}
-                    {% else %}
-                    —
-                    {% endif %}
-                </b>
-            </div>
-        </div>
-
-        {% else %}
-        <div class="card">
-            <p style="margin:0;">目前尚未連結任何帳號</p>
+            <b>{{ msg }}</b>
         </div>
         {% endif %}
+
+        <!-- ✅ 新增連結 -->
+        <div class="card">
+            <h2 style="margin:0 0 10px;">新增連結帳號</h2>
+            <form method="post" action="/group/link/add"
+                style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
+                <label>子帳號帳號<br><input name="child_username" required></label>
+                <label>子帳號密碼<br><input name="child_password" type="password" required></label>
+                <button class="btn primary" type="submit">連結</button>
+            </form>
+            <div class="muted" style="margin-top:8px;">為了避免被亂連，這裡需要輸入子帳號密碼驗證。</div>
+        </div>
+
+        <!-- ✅ 已連結清單 -->
+        <div class="card">
+            <h2 style="margin:0 0 10px;">已連結帳號</h2>
+
+            {% if linked_accounts and linked_accounts|length > 0 %}
+            {% for a in linked_accounts %}
+            <div class="pill"
+                style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                <div>
+                    <b>{{ a.display_name or a.username }}</b>
+                    <span class="muted">（{{ a.username }} / ID {{ a.user_id }}）</span>
+                </div>
+                <form method="post" action="/group/link/delete" onsubmit="return confirm('確定解除連結？');" style="margin:0;">
+                    <input type="hidden" name="link_id" value="{{ a.link_id }}">
+                    <button class="btn danger" type="submit">解除</button>
+                </form>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="muted">目前尚未連結任何帳號</div>
+            {% endif %}
+        </div>
 
     </div>
-
-    <script>
-        (function () {
-            const el = document.getElementById('ym');
-            if (!el) return;
-            el.addEventListener('change', function () {
-                const v = el.value; // YYYY-MM
-                if (!v) return;
-                window.location.href = '/group-month?ym=' + encodeURIComponent(v);
-            });
-        })();
-    </script>
 </body>
 
 </html>
