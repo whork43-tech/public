@@ -1495,6 +1495,7 @@ def add_record(
     1) count_today 勾選：只新增今日實收（payments），不扣票餘/支出餘
     2) 新增資料填的「支出(total_amount)」要算入今日開銷（expenses, spent_at=今天）
     3) Postgres 不能用「失敗再 try/except fallback」：先檢查欄位存在再決定 INSERT 欄位，避免 transaction aborted
+    4) expenses 可能有 item NOT NULL：若有 item 欄位，必須帶值
     """
     user = require_active(request)
     if not user:
@@ -1606,8 +1607,21 @@ def add_record(
             # ✅ 新增資料時「支出金額(total_amount)」要算入今日開銷（用使用者輸入的 total_amount）
             expense_amount_today = int(total_amount or 0)
             if expense_amount_today > 0:
+                has_item = _has_column(cur, "expenses", "item")
                 has_note = _has_column(cur, "expenses", "note")
-                if has_note:
+
+                # 依資料庫欄位決定 INSERT 欄位集合（避免 NOT NULL / 欄位不存在）
+                if has_item and has_note:
+                    cur.execute(
+                        f"INSERT INTO expenses (spent_at, item, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
+                        (today_str(), f"新增資料支出：{name}", expense_amount_today, "", user["user_id"]),
+                    )
+                elif has_item:
+                    cur.execute(
+                        f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                        (today_str(), f"新增資料支出：{name}", expense_amount_today, user["user_id"]),
+                    )
+                elif has_note:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
                         (today_str(), expense_amount_today, f"新增資料支出：{name}", user["user_id"]),
