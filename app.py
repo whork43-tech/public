@@ -1490,7 +1490,12 @@ def add_record(
     count_today: str | None = Form(None),
     ticket_deduct_one: str | None = Form(None),
 ):
-    # ✅ 修正：count_today 勾選時要寫入 payments，才會進入「今日實收 / 今日淨利」等計算
+    """
+    修正重點：
+    1) 勾選「是否算入今日實收」(count_today) => 寫入 payments（今日實收會增加）
+    2) count_today 勾選時：不扣票餘/支出餘（ticket_offset/expense_offset 強制為 0）
+    3) 新增資料時填寫的「支出(total_amount)」=> 直接寫入 expenses（算入今日開銷）
+    """
     user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
@@ -1508,25 +1513,25 @@ def add_record(
 
     face_value_effective = int(face_value or 0)
 
-    # 支出：勾選就先把第一期的每期金額算進總支出（維持你原本規則）
+    # total_amount_effective：維持你原本規則（若勾「第一期算入支出」就加一期 amount）
     total_amount_effective = int(total_amount or 0)
     if deduct_first_period_expense_b:
         total_amount_effective += int(amount or 0)
 
-    # ✅ 若有算入今日實收，為避免「有收款但期數沒走」怪狀況，paid_count 至少 = 1
+    # 若 as_period1 或 count_today：paid_count 至少 1（避免有收款但期數沒走的怪狀況）
     paid_count = 1 if (as_period1_b or count_today_b) else 0
 
     # 建立日不算收款日（維持你原本設計）
     last_paid_day = 0
 
-    # 票/支出餘的預扣（你原本就有）
-expense_offset = int(amount or 0) if ticket_deduct_one_b else 0
-ticket_offset = int(amount or 0) if use_face_value_b else 0
+    # 票/支出餘的預扣（維持你原本：由那兩個勾選控制）
+    expense_offset = int(amount or 0) if ticket_deduct_one_b else 0
+    ticket_offset = int(amount or 0) if use_face_value_b else 0
 
-# ✅ 修正：若「是否算入今日實收」(count_today) 勾選，只新增今日實收，不扣票餘/支出餘
-if count_today_b:
-    expense_offset = 0
-    ticket_offset = 0
+    # ✅ 修正：若「是否算入今日實收」勾選，只新增今日實收，不扣票餘/支出餘
+    if count_today_b:
+        expense_offset = 0
+        ticket_offset = 0
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -1579,24 +1584,23 @@ if count_today_b:
                 )
                 record_id = cur.fetchone()[0]
 
+            # ✅ 修正：新增資料時「支出金額(total_amount)」要算入今日開銷
+            # 用使用者輸入的 total_amount（不含任何自動加的規則）
+            expense_amount_today = int(total_amount or 0)
+            if expense_amount_today > 0:
+                try:
+                    cur.execute(
+                        f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                        (today_str(), expense_amount_today, f"新增資料支出：{name}", user["user_id"]),
+                    )
+                except Exception:
+                    # 若 expenses 沒有 note 欄位，退回舊格式
+                    cur.execute(
+                        f"INSERT INTO expenses (spent_at, amount, user_id) VALUES ({PH}, {PH}, {PH})",
+                        (today_str(), expense_amount_today, user["user_id"]),
+                    )
 
-# ✅ 修正：新增資料時「支出金額(total_amount)」要算入今日開銷
-# 只用使用者輸入的 total_amount（不包含任何自動加的額外規則），避免跟你原本統計混在一起
-expense_amount_today = int(total_amount or 0)
-if expense_amount_today > 0:
-    try:
-        cur.execute(
-            f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-            (today_str(), expense_amount_today, f'新增資料支出：{name}', user["user_id"]),
-        )
-    except Exception:
-        # 若 expenses 沒有 note 欄位，退回舊格式
-        cur.execute(
-            f"INSERT INTO expenses (spent_at, amount, user_id) VALUES ({PH}, {PH}, {PH})",
-            (today_str(), expense_amount_today, user["user_id"]),
-        )
-
-            # ✅ 勾選「是否算入今日實收」：直接寫入 payments（paid_at=今天）
+            # ✅ 勾選「是否算入今日實收」：寫入 payments（paid_at=今天）
             if count_today_b:
                 try:
                     cur.execute(
