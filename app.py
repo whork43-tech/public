@@ -222,6 +222,56 @@ ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT
 """
                 )
 
+                # ========== USERS：連結功能欄位 ==========
+            if IS_SQLITE:
+                if not _sqlite_has_column(cur, "users", "group_activated_at"):
+                    cur.execute("ALTER TABLE users ADD COLUMN group_activated_at TEXT")
+                if not _sqlite_has_column(cur, "users", "group_trial_started_at"):
+                    cur.execute(
+                        "ALTER TABLE users ADD COLUMN group_trial_started_at TEXT"
+                    )
+            else:
+                cur.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS group_activated_at TEXT"
+                )
+                cur.execute(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT"
+                )
+
+            # ========== ACCOUNT LINKS ==========
+            if IS_SQLITE:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS account_links (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        master_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        child_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+                    """
+                )
+                # 子帳號只能被連結一次（避免被多個主帳號綁走）
+                cur.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_links_child ON account_links(child_user_id)"
+                )
+                # 同一主帳號重複連同一子帳號也擋
+                cur.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_links_pair ON account_links(master_user_id, child_user_id)"
+                )
+            else:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS account_links (
+                        id SERIAL PRIMARY KEY,
+                        master_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        child_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        created_at TEXT NOT NULL DEFAULT (now()::text),
+                        UNIQUE(child_user_id),
+                        UNIQUE(master_user_id, child_user_id)
+                    );
+                    """
+                )
+
                 # ========== RECORDS ==========
             if IS_SQLITE:
                 cur.execute(
@@ -1618,51 +1668,74 @@ def group_month(request: Request):
     if not user or isinstance(user, RedirectResponse):
         return user
 
-    # 只有 master 才能看
     if not is_master_user(user["user_id"]):
         return RedirectResponse("/", status_code=303)
 
-    # 連結功能狀態（回傳 4 個值）
-    ok, mode, until, msg = get_group_access_status(user["user_id"])
-    group_enabled = bool(ok)
-
-    # ym=YYYY-MM（不給就用當月）
-    ym = (request.query_params.get("ym") or "").strip()
-    year = month = None
-    if ym and len(ym) == 7 and ym[4] == "-":
-        try:
-            year = int(ym[:4])
-            month = int(ym[5:7])
-        except Exception:
-            year = month = None
-
-    today = date.fromisoformat(today_str())
-    show_y = year or today.year
-    show_m = month or today.month
-    show_ym = f"{show_y:04d}-{show_m:02d}"
-
-    # ✅ 一定要傳：已連結帳號清單（不管有沒有開通）
+    msg = (request.query_params.get("msg") or "").strip()
     linked_accounts = get_linked_accounts(user["user_id"])
-
-    # ✅ 只有開通才計算淨利；未開通就給空值（模板會顯示 —）
-    group_summary = {"month_total": 0, "per_user": []}
-    if group_enabled:
-        group_summary = compute_group_summary(user["user_id"], year=year, month=month)
 
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
-            "show_ym": show_ym,
-            "group_enabled": group_enabled,
-            "group_mode": mode,
-            "group_until": (until.isoformat() if until else ""),
-            "group_msg": msg,
+            "msg": msg,
             "linked_accounts": linked_accounts,
-            "group_summary": group_summary,
         },
     )
+
+
+def get_linked_accounts(master_user_id: int) -> list[dict]:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT al.id, u.id, u.username, u.display_name
+                FROM account_links al
+                JOIN users u ON u.id = al.child_user_id
+                WHERE al.master_user_id = {PH}
+                ORDER BY al.id DESC
+                """,
+                (master_user_id,),
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            out.append(
+                {
+                    "link_id": int(r[0]),
+                    "user_id": int(r[1]),
+                    "username": r[2],
+                    "display_name": (r[3] or ""),
+                }
+            )
+        else:
+            out.append(
+                {
+                    "link_id": int(r[0]),
+                    "user_id": int(r[1]),
+                    "username": r[2],
+                    "display_name": (r[3] or ""),
+                }
+            )
+    return out
+
+
+def is_child_user(user_id: int) -> bool:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT 1 FROM account_links WHERE child_user_id = {PH} LIMIT 1",
+                (user_id,),
+            )
+            return cur.fetchone() is not None
+
+
+def is_master_user(user_id: int) -> bool:
+    # 只要不是別人的子帳號，就可當主帳號（避免「沒連過就看不到按鈕」的雞生蛋）
+    return not is_child_user(user_id)
 
 
 @app.get("/history")
@@ -2068,6 +2141,105 @@ def delete_payment(request: Request, payment_id: int = Form(...)):
         conn.commit()
 
     return RedirectResponse("/history", status_code=303)
+
+
+@app.post("/group/link/add")
+def group_link_add(
+    request: Request,
+    child_username: str = Form(...),
+    child_password: str = Form(...),
+):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse(
+            "/?paid_msg=" + quote("子帳號無法使用連結功能"), status_code=303
+        )
+
+    child_username = (child_username or "").strip()
+    child_password = (child_password or "").strip()
+    if not child_username or not child_password:
+        return RedirectResponse(
+            "/group-month?msg=" + quote("請輸入子帳號與密碼"), status_code=303
+        )
+
+    if child_username == user["username"]:
+        return RedirectResponse(
+            "/group-month?msg=" + quote("不能連結自己"), status_code=303
+        )
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT id, password_hash FROM users WHERE username = {PH}",
+                (child_username,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return RedirectResponse(
+                    "/group-month?msg=" + quote("找不到子帳號"), status_code=303
+                )
+
+            child_id = int(row["id"] if isinstance(row, sqlite3.Row) else row[0])
+            pw_hash = row["password_hash"] if isinstance(row, sqlite3.Row) else row[1]
+
+            if not verify_password(child_password, pw_hash):
+                return RedirectResponse(
+                    "/group-month?msg=" + quote("子帳號密碼錯誤"), status_code=303
+                )
+
+            # 子帳號已被別人連結就擋
+            cur.execute(
+                f"SELECT 1 FROM account_links WHERE child_user_id = {PH} LIMIT 1",
+                (child_id,),
+            )
+            if cur.fetchone():
+                return RedirectResponse(
+                    "/group-month?msg=" + quote("此子帳號已被其他主帳號連結"),
+                    status_code=303,
+                )
+
+            try:
+                cur.execute(
+                    f"INSERT INTO account_links (master_user_id, child_user_id) VALUES ({PH}, {PH})",
+                    (user["user_id"], child_id),
+                )
+                conn.commit()
+            except Exception:
+                if not IS_SQLITE:
+                    conn.rollback()
+                return RedirectResponse(
+                    "/group-month?msg=" + quote("新增失敗：可能已存在"), status_code=303
+                )
+
+    return RedirectResponse("/group-month?msg=" + quote("連結完成"), status_code=303)
+
+
+@app.post("/group/link/delete")
+def group_link_delete(request: Request, link_id: int = Form(...)):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse(
+            "/?paid_msg=" + quote("子帳號無法使用連結功能"), status_code=303
+        )
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 只能刪自己的連結
+            cur.execute(
+                f"DELETE FROM account_links WHERE id = {PH} AND master_user_id = {PH}",
+                (link_id, user["user_id"]),
+            )
+        conn.commit()
+
+    return RedirectResponse("/group-month?msg=" + quote("已解除連結"), status_code=303)
 
 
 @app.post("/admin/users/group_activate")
