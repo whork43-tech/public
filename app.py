@@ -222,56 +222,6 @@ ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT
 """
                 )
 
-                # ========== USERS：連結功能欄位 ==========
-            if IS_SQLITE:
-                if not _sqlite_has_column(cur, "users", "group_activated_at"):
-                    cur.execute("ALTER TABLE users ADD COLUMN group_activated_at TEXT")
-                if not _sqlite_has_column(cur, "users", "group_trial_started_at"):
-                    cur.execute(
-                        "ALTER TABLE users ADD COLUMN group_trial_started_at TEXT"
-                    )
-            else:
-                cur.execute(
-                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS group_activated_at TEXT"
-                )
-                cur.execute(
-                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT"
-                )
-
-            # ========== ACCOUNT LINKS ==========
-            if IS_SQLITE:
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS account_links (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        master_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        child_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-                    );
-                    """
-                )
-                # 子帳號只能被連結一次（避免被多個主帳號綁走）
-                cur.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_links_child ON account_links(child_user_id)"
-                )
-                # 同一主帳號重複連同一子帳號也擋
-                cur.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_links_pair ON account_links(master_user_id, child_user_id)"
-                )
-            else:
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS account_links (
-                        id SERIAL PRIMARY KEY,
-                        master_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        child_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                        created_at TEXT NOT NULL DEFAULT (now()::text),
-                        UNIQUE(child_user_id),
-                        UNIQUE(master_user_id, child_user_id)
-                    );
-                    """
-                )
-
                 # ========== RECORDS ==========
             if IS_SQLITE:
                 cur.execute(
@@ -1540,6 +1490,7 @@ def add_record(
     count_today: str | None = Form(None),
     ticket_deduct_one: str | None = Form(None),
 ):
+    # ✅ 修正：count_today 勾選時要寫入 payments，才會進入「今日實收 / 今日淨利」等計算
     user = require_active(request)
     if not user:
         return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
@@ -1557,29 +1508,24 @@ def add_record(
 
     face_value_effective = int(face_value or 0)
 
-    # 你原本規則：勾「扣第一期」就把 total_amount_effective 加上一期 amount
+    # 支出：勾選就先把第一期的每期金額算進總支出（維持你原本規則）
     total_amount_effective = int(total_amount or 0)
     if deduct_first_period_expense_b:
         total_amount_effective += int(amount or 0)
 
-    # paid_count：勾「算第一期」就視為已繳一期（維持你原本設計）
-    paid_count = 1 if as_period1_b else 0
-    last_paid_day = 0  # 維持你原本：建立日不算收款日
+    # ✅ 若有算入今日實收，為避免「有收款但期數沒走」怪狀況，paid_count 至少 = 1
+    paid_count = 1 if (as_period1_b or count_today_b) else 0
 
-    # offset（維持你原本欄位）
+    # 建立日不算收款日（維持你原本設計）
+    last_paid_day = 0
+
+    # 票/支出餘的預扣（你原本就有）
     expense_offset = int(amount or 0) if ticket_deduct_one_b else 0
     ticket_offset = int(amount or 0) if use_face_value_b else 0
 
-    # ✅ 你說「填寫支出就算入今日開銷」：支出以使用者填的 total_amount 原值為準（不含你加的一期）
-    principal = 0
-    try:
-        principal = int(total_amount or 0)
-    except Exception:
-        principal = 0
-
     with get_conn() as conn:
         with get_cursor(conn) as cur:
-            # 1) 新增 records，取得 record_id
+            # 先寫 records，拿 record_id
             if IS_SQLITE:
                 cur.execute(
                     f"""
@@ -1628,34 +1574,20 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-            # 2) ✅ 勾「是否算入今日實收」→ 寫入 payments（同一個 conn，避免外鍵炸）
+            # ✅ 勾選「是否算入今日實收」：直接寫入 payments（paid_at=今天）
             if count_today_b:
-                cur.execute(
-                    f"""
-                    INSERT INTO payments (paid_at, amount, record_id, record_name, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH}, {PH})
-                    """,
-                    (
-                        today_str(),
-                        int(amount or 0),
-                        int(record_id),
-                        name,
-                        user["user_id"],
-                    ),
-                )
+                try:
+                    cur.execute(
+                        f"INSERT INTO payments (paid_at, amount, record_id, record_name, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
+                        (today_str(), int(amount or 0), int(record_id), name, user["user_id"]),
+                    )
+                except Exception:
+                    # 若 payments 沒有 record_name 欄位，退回舊格式
+                    cur.execute(
+                        f"INSERT INTO payments (paid_at, amount, record_id, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+                        (today_str(), int(amount or 0), int(record_id), user["user_id"]),
+                    )
 
-            # 3) ✅ 只要「支出(total_amount)」有填且 >0 → 記一筆 expenses（算入當日開銷）
-            if principal > 0:
-                spent_day = created_date or today_str()
-                cur.execute(
-                    f"""
-                    INSERT INTO expenses (spent_at, item, amount, user_id)
-                    VALUES ({PH}, {PH}, {PH}, {PH})
-                    """,
-                    (spent_day, f"{name}（支出）", principal, user["user_id"]),
-                )
-
-        # ✅ 最後只 commit 一次
         conn.commit()
 
     return RedirectResponse(url="/?paid_msg=" + quote("新增完成"), status_code=303)
@@ -1668,74 +1600,44 @@ def group_month(request: Request):
     if not user or isinstance(user, RedirectResponse):
         return user
 
+    # 只有 master 才能看
     if not is_master_user(user["user_id"]):
         return RedirectResponse("/", status_code=303)
 
-    msg = (request.query_params.get("msg") or "").strip()
-    linked_accounts = get_linked_accounts(user["user_id"])
+    # 連結功能：7天試用 + 付費（回傳 4 個值）
+    ok, mode, until, msg = get_group_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+
+    # ym=YYYY-MM（不給就用當月）
+    ym = (request.query_params.get("ym") or "").strip()
+    year = month = None
+    if ym and len(ym) == 7 and ym[4] == "-":
+        try:
+            year = int(ym[:4])
+            month = int(ym[5:7])
+        except Exception:
+            year = month = None
+
+    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
+
+    today = date.fromisoformat(today_str())
+    show_y = year or today.year
+    show_m = month or today.month
+    show_ym = f"{show_y:04d}-{show_m:02d}"
 
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
-            "msg": msg,
-            "linked_accounts": linked_accounts,
+            "group_summary": group_summary,
+            "show_ym": show_ym,
+            "group_mode": mode,
+            "group_until": (until.isoformat() if until else ""),
+            "group_msg": msg,
         },
     )
-
-
-def get_linked_accounts(master_user_id: int) -> list[dict]:
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"""
-                SELECT al.id, u.id, u.username, u.display_name
-                FROM account_links al
-                JOIN users u ON u.id = al.child_user_id
-                WHERE al.master_user_id = {PH}
-                ORDER BY al.id DESC
-                """,
-                (master_user_id,),
-            )
-            rows = cur.fetchall()
-
-    out = []
-    for r in rows:
-        if isinstance(r, sqlite3.Row):
-            out.append(
-                {
-                    "link_id": int(r[0]),
-                    "user_id": int(r[1]),
-                    "username": r[2],
-                    "display_name": (r[3] or ""),
-                }
-            )
-        else:
-            out.append(
-                {
-                    "link_id": int(r[0]),
-                    "user_id": int(r[1]),
-                    "username": r[2],
-                    "display_name": (r[3] or ""),
-                }
-            )
-    return out
-
-
-def is_child_user(user_id: int) -> bool:
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"SELECT 1 FROM account_links WHERE child_user_id = {PH} LIMIT 1",
-                (user_id,),
-            )
-            return cur.fetchone() is not None
-
-
-def is_master_user(user_id: int) -> bool:
-    # 只要不是別人的子帳號，就可當主帳號（避免「沒連過就看不到按鈕」的雞生蛋）
-    return not is_child_user(user_id)
 
 
 @app.get("/history")
@@ -2022,6 +1924,44 @@ def admin_users_activate(
     return RedirectResponse("/admin/users", status_code=303)
 
 
+@app.post("/admin/users/group-activate")
+def admin_users_group_activate(
+    request: Request,
+    user_id: int = Form(...),
+    days: str = Form(""),
+    clear: str | None = Form(None),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    from datetime import date, timedelta
+
+    days = (days or "").strip()
+
+    if clear == "1":
+        value = None
+        trial_value = None
+    else:
+        if not days:
+            value = None
+        else:
+            d = int(days)
+            until = date.today() + timedelta(days=d)
+            value = until.isoformat()
+        trial_value = None
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET group_activated_at = {PH}, group_trial_started_at = {PH} WHERE id = {PH}",
+                (value, trial_value, user_id),
+            )
+        conn.commit()
+
+    return RedirectResponse("/admin/users?msg=" + quote("已設定連結帳號功能"), status_code=303)
+
 @app.post("/admin/users/create")
 def admin_users_create(
     request: Request,
@@ -2141,105 +2081,6 @@ def delete_payment(request: Request, payment_id: int = Form(...)):
         conn.commit()
 
     return RedirectResponse("/history", status_code=303)
-
-
-@app.post("/group/link/add")
-def group_link_add(
-    request: Request,
-    child_username: str = Form(...),
-    child_password: str = Form(...),
-):
-    init_db()
-    user = require_active(request)
-    if not user or isinstance(user, RedirectResponse):
-        return user
-
-    if not is_master_user(user["user_id"]):
-        return RedirectResponse(
-            "/?paid_msg=" + quote("子帳號無法使用連結功能"), status_code=303
-        )
-
-    child_username = (child_username or "").strip()
-    child_password = (child_password or "").strip()
-    if not child_username or not child_password:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("請輸入子帳號與密碼"), status_code=303
-        )
-
-    if child_username == user["username"]:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("不能連結自己"), status_code=303
-        )
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"SELECT id, password_hash FROM users WHERE username = {PH}",
-                (child_username,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return RedirectResponse(
-                    "/group-month?msg=" + quote("找不到子帳號"), status_code=303
-                )
-
-            child_id = int(row["id"] if isinstance(row, sqlite3.Row) else row[0])
-            pw_hash = row["password_hash"] if isinstance(row, sqlite3.Row) else row[1]
-
-            if not verify_password(child_password, pw_hash):
-                return RedirectResponse(
-                    "/group-month?msg=" + quote("子帳號密碼錯誤"), status_code=303
-                )
-
-            # 子帳號已被別人連結就擋
-            cur.execute(
-                f"SELECT 1 FROM account_links WHERE child_user_id = {PH} LIMIT 1",
-                (child_id,),
-            )
-            if cur.fetchone():
-                return RedirectResponse(
-                    "/group-month?msg=" + quote("此子帳號已被其他主帳號連結"),
-                    status_code=303,
-                )
-
-            try:
-                cur.execute(
-                    f"INSERT INTO account_links (master_user_id, child_user_id) VALUES ({PH}, {PH})",
-                    (user["user_id"], child_id),
-                )
-                conn.commit()
-            except Exception:
-                if not IS_SQLITE:
-                    conn.rollback()
-                return RedirectResponse(
-                    "/group-month?msg=" + quote("新增失敗：可能已存在"), status_code=303
-                )
-
-    return RedirectResponse("/group-month?msg=" + quote("連結完成"), status_code=303)
-
-
-@app.post("/group/link/delete")
-def group_link_delete(request: Request, link_id: int = Form(...)):
-    init_db()
-    user = require_active(request)
-    if not user or isinstance(user, RedirectResponse):
-        return user
-
-    if not is_master_user(user["user_id"]):
-        return RedirectResponse(
-            "/?paid_msg=" + quote("子帳號無法使用連結功能"), status_code=303
-        )
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            # 只能刪自己的連結
-            cur.execute(
-                f"DELETE FROM account_links WHERE id = {PH} AND master_user_id = {PH}",
-                (link_id, user["user_id"]),
-            )
-        conn.commit()
-
-    return RedirectResponse("/group-month?msg=" + quote("已解除連結"), status_code=303)
 
 
 @app.post("/admin/users/group_activate")
