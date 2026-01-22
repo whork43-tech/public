@@ -1584,23 +1584,44 @@ def add_record(
                 )
                 record_id = cur.fetchone()[0]
 
-            # ✅ 修正：新增資料時「支出金額(total_amount)」要算入今日開銷
-            # 用使用者輸入的 total_amount（不含任何自動加的規則）
-            expense_amount_today = int(total_amount or 0)
-            if expense_amount_today > 0:
-                try:
-                    cur.execute(
-                        f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (today_str(), expense_amount_today, f"新增資料支出：{name}", user["user_id"]),
-                    )
-                except Exception:
-                    # 若 expenses 沒有 note 欄位，退回舊格式
-                    cur.execute(
-                        f"INSERT INTO expenses (spent_at, amount, user_id) VALUES ({PH}, {PH}, {PH})",
-                        (today_str(), expense_amount_today, user["user_id"]),
-                    )
+# ✅ 修正：新增資料時「支出金額(total_amount)」要算入今日開銷
+# 只用使用者輸入的 total_amount（不包含任何自動加的額外規則），避免跟你原本統計混在一起
+expense_amount_today = int(total_amount or 0)
+if expense_amount_today > 0:
+    # 重要：Postgres 一旦 SQL 失敗，整個 transaction 會進入 aborted 狀態
+    # 所以不能用 try/except 直接 fallback，必須先判斷欄位是否存在再決定 SQL
+    has_note_col = False
+    try:
+        if IS_SQLITE:
+            cur.execute("PRAGMA table_info(expenses)")
+            cols = [r[1] for r in cur.fetchall()]
+            has_note_col = "note" in cols
+        else:
+            cur.execute(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'expenses'
+                  AND column_name = 'note'
+                LIMIT 1
+                """
+            )
+            has_note_col = cur.fetchone() is not None
+    except Exception:
+        has_note_col = False
 
-            # ✅ 勾選「是否算入今日實收」：寫入 payments（paid_at=今天）
+    if has_note_col:
+        cur.execute(
+            f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
+            (today_str(), expense_amount_today, f"新增資料支出：{name}", user["user_id"]),
+        )
+    else:
+        cur.execute(
+            f"INSERT INTO expenses (spent_at, amount, user_id) VALUES ({PH}, {PH}, {PH})",
+            (today_str(), expense_amount_today, user["user_id"]),
+        )
+
+# ✅ 勾選「是否算入今日實收」：寫入 payments（paid_at=今天）
             if count_today_b:
                 try:
                     cur.execute(
