@@ -1,68 +1,182 @@
 <!doctype html>
 <html lang="zh-Hant">
-
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>連結帳號</title>
-    <link rel="stylesheet" href="/static/style.css?v=1003">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>連結帳號｜月淨利</title>
+  <link rel="stylesheet" href="/static/style.css?v=1003">
+  <style>
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .inline { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .danger-box { border:1px solid #fecaca; background:#fff5f5; }
+    .ok-box { border:1px solid #bbf7d0; background:#f0fff4; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 720px){ .grid2{ grid-template-columns:1fr; } }
+    .mini { font-size:13px; color:#666; }
+    .table { width:100%; border-collapse: collapse; }
+    .table th, .table td { padding:10px 8px; border-bottom:1px solid #eee; text-align:left; }
+    .tag { display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#fff; font-size:13px; }
+  </style>
 </head>
-
 <body>
-    <div class="container">
+  <div class="container">
 
-        <div class="card topbar">
-            <div>
-                <h2 style="margin:0;">👥 連結帳號</h2>
-                <div class="muted" style="margin-top:6px;">主帳號：<b>{{ user.display_name or user.username }}</b></div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <a class="btn" href="/">← 返回首頁</a>
-            </div>
+    <div class="card topbar">
+      <div>
+        <h2 style="margin:0;">👥 連結帳號｜月淨利</h2>
+        <div class="mini" style="margin-top:6px;">
+          主帳號：<b>{{ user.display_name if user.display_name else user.username }}</b>
+          <span style="opacity:.7;">（{{ user.username }}）</span>
         </div>
+      </div>
 
-        {% if msg %}
-        <div class="card">
-            <b>{{ msg }}</b>
-        </div>
-        {% endif %}
-
-        <!-- ✅ 新增連結 -->
-        <div class="card">
-            <h2 style="margin:0 0 10px;">新增連結帳號</h2>
-            <form method="post" action="/group/link/add"
-                style="display:flex; gap:10px; flex-wrap:wrap; align-items:end;">
-                <label>子帳號帳號<br><input name="child_username" required></label>
-                <label>子帳號密碼<br><input name="child_password" type="password" required></label>
-                <button class="btn primary" type="submit">連結</button>
-            </form>
-            <div class="muted" style="margin-top:8px;">為了避免被亂連，這裡需要輸入子帳號密碼驗證。</div>
-        </div>
-
-        <!-- ✅ 已連結清單 -->
-        <div class="card">
-            <h2 style="margin:0 0 10px;">已連結帳號</h2>
-
-            {% if linked_accounts and linked_accounts|length > 0 %}
-            {% for a in linked_accounts %}
-            <div class="pill"
-                style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                <div>
-                    <b>{{ a.display_name or a.username }}</b>
-                    <span class="muted">（{{ a.username }} / ID {{ a.user_id }}）</span>
-                </div>
-                <form method="post" action="/group/link/delete" onsubmit="return confirm('確定解除連結？');" style="margin:0;">
-                    <input type="hidden" name="link_id" value="{{ a.link_id }}">
-                    <button class="btn danger" type="submit">解除</button>
-                </form>
-            </div>
-            {% endfor %}
-            {% else %}
-            <div class="muted">目前尚未連結任何帳號</div>
-            {% endif %}
-        </div>
-
+      <div class="inline">
+        <label class="mini" style="display:flex; gap:8px; align-items:center;">
+          月份
+          <input id="ym" type="month" value="{{ show_ym }}" style="padding:9px 12px; border:1px solid #ddd; border-radius:10px;">
+        </label>
+        <a class="btn" href="/">← 返回首頁</a>
+      </div>
     </div>
-</body>
 
+    {% if msg %}
+    <div class="card {% if group_access_ok %}ok-box{% else %}danger-box{% endif %}">
+      <b>{{ msg }}</b>
+    </div>
+    {% endif %}
+
+    {% if not group_access_ok %}
+    <div class="card danger-box">
+      <div style="font-weight:800; margin-bottom:6px;">⛔ 連結帳號功能未開通</div>
+      <div class="mini">
+        {% if group_access_mode == "expired" %}
+          試用已到期，請到後台開通「連結帳號功能」。
+        {% else %}
+          尚未開通，請到後台開通「連結帳號功能」。
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="card ok-box">
+      <div class="mini">
+        {% if group_access_mode == "trial" %}
+          🧪 試用中｜到期：<b>{{ group_access_until }}</b>
+        {% elif group_access_mode == "activated" %}
+          ✅ 已開通｜到期：<b>{{ group_access_until }}</b>
+        {% else %}
+          ✅ 可使用
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="grid2">
+      <div class="card">
+        <h2 style="margin:0 0 10px;">➕ 新增連結帳號</h2>
+
+        {% if group_access_ok %}
+        <form method="post" action="/group/link/add" class="form-grid" style="grid-template-columns: 1fr 1fr; gap:12px;">
+          <label>子帳號（username）
+            <input type="text" name="child_username" placeholder="例如：user02" required>
+          </label>
+
+          <label>子帳號密碼
+            <input type="password" name="child_password" placeholder="請輸入子帳號密碼" required>
+          </label>
+
+          <button class="btn primary" type="submit">連結</button>
+        </form>
+
+        <div class="mini" style="margin-top:10px;">
+          ※ 子帳號只能被一個主帳號連結（避免重複授權）
+        </div>
+        {% else %}
+        <div class="mini">目前未開通，無法新增連結。</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 10px;">📌 已連結帳號</h2>
+
+        {% if linked_accounts and linked_accounts|length > 0 %}
+        <table class="table">
+          <thead>
+            <tr>
+              <th>名稱</th>
+              <th>帳號</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in linked_accounts %}
+            <tr>
+              <td>{{ a.display_name if a.display_name else a.username }}</td>
+              <td class="mini">{{ a.username }}</td>
+              <td>
+                {% if group_access_ok %}
+                <form method="post" action="/group/link/delete" style="margin:0;">
+                  <input type="hidden" name="link_id" value="{{ a.link_id }}">
+                  <button class="btn danger" type="submit" onclick="return confirm('確定要解除連結？');">解除</button>
+                </form>
+                {% else %}
+                <span class="tag">未開通</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="mini">目前尚未連結任何帳號</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <h2 style="margin:0;">📈 本月淨利（依帳號）</h2>
+        <div class="tag">月份：<b>{{ show_ym }}</b></div>
+      </div>
+
+      {% if group_summary and group_summary.per_user and group_summary.per_user|length > 0 %}
+      <div style="margin-top:12px;">
+        {% for u in group_summary.per_user %}
+        {% set net = u.month_net %}
+        <div class="card" style="margin:0 0 10px; border:1px solid #eee;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:800;">{{ u.display_name if u.display_name else u.username }}</div>
+              <div class="mini">帳號：{{ u.username }}</div>
+            </div>
+
+            <div class="tag" style="{% if net < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
+              🗓️ 月淨利：<b>{{ net }}</b>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="tag" style="margin-top:8px;">
+        📊 連結帳號合計：<b>{{ group_summary.month_total }}</b>
+      </div>
+      {% else %}
+      <div class="mini" style="margin-top:10px;">尚未連結任何帳號（或本月沒有資料）</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <script>
+    (function () {
+      const el = document.getElementById('ym');
+      if (!el) return;
+      el.addEventListener('change', function () {
+        const v = el.value;
+        if (!v) return;
+        window.location.href = '/group-month?ym=' + encodeURIComponent(v);
+      });
+    })();
+  </script>
+</body>
 </html>

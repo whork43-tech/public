@@ -132,24 +132,6 @@
           <span class="pill">⛔ 未開通 <b>{{ users|rejectattr('activated_at')|list|length }}</b></span>
         </div>
 
-        {% if not group_enabled %}
-        <div class="card danger" style="margin-top:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div>
-              <b>⚠ 連結帳號功能未開通</b>
-              <div class="muted" style="margin-top:6px;">
-                {% if group_mode == 'trial' %}
-                試用中（到期日：{{ group_until }}）
-                {% else %}
-                {{ group_msg }}
-                {% endif %}
-              </div>
-            </div>
-            <span class="badge-danger">未開通</span>
-          </div>
-        </div>
-        {% endif %}
-
         <a class="btn" href="/">回首頁</a>
       </div>
 
@@ -302,7 +284,27 @@
                   <button class="btn sm danger" type="submit">刪除帳號</button>
                 </form>
               </td>
+              <form class="act-form" method="post" action="/admin/users/group_activate"
+                style="display:flex; gap:8px; align-items:center; margin:8px 0 0; flex-wrap:wrap;">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
 
+                <input class="days-input" type="number" name="days" min="1" placeholder="連結功能天數">
+
+                <div class="quick">
+                  <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
+                  <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
+                  <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
+                  <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
+                  <button class="btn sm" type="submit">設定連結功能</button>
+
+                  {% if u.group_activated_at %}
+                  <button class="btn sm danger" type="submit" name="clear" value="1"
+                    onclick="return confirm('確定要清除連結功能開通時間？');">
+                    清除
+                  </button>
+                  {% endif %}
+                </div>
+              </form>
             </tr>
             {% else %}
             <tr>

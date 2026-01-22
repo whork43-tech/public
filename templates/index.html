@@ -326,19 +326,11 @@
           <a class="btn" href="/expense-page" style="margin-left:10px;">＋ 新增開銷</a>
           <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
 
-          <a class="btn {% if group_access_ok %}primary{% else %}danger{% endif %}" href="/group-month"
-            style="margin-left:10px;">
+          {% if master_mode %}
+          <a class="btn" href="/group-month" style="margin-left:10px;">
             👥 連結帳號
           </a>
-
-          {% if not master_mode %}
-          <div class="muted" style="margin-top:8px;">此帳號為子帳號：僅能被主帳號連結，無法使用連結功能。</div>
-          {% elif not group_access_ok %}
-          <div class="muted" style="margin-top:8px;">
-            連結功能未開通{% if group_access_until %}（試用/到期：{{ group_access_until }}）{% endif %}，點進去可查看開通方式。
-          </div>
           {% endif %}
-
         </div>
 
 
