@@ -2049,6 +2049,48 @@ def admin_users_activate(
     return RedirectResponse("/admin/users", status_code=303)
 
 
+
+@app.post("/admin/users/activate-clear-multiple")
+def admin_users_activate_clear_multiple(
+    request: Request,
+    user_ids: list[str] = Form([]),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    # 轉成 int，避免亂值
+    ids: list[int] = []
+    for x in user_ids or []:
+        try:
+            ids.append(int(x))
+        except Exception:
+            pass
+
+    if not ids:
+        return RedirectResponse(
+            "/admin/users?msg=" + quote("請先勾選要清除的已開通帳號"),
+            status_code=303,
+        )
+
+    placeholders = ",".join([PH] * len(ids))
+    params = [None, *ids]  # activated_at 設為 NULL
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET activated_at = {PH} WHERE id IN ({placeholders})",
+                params,
+            )
+        conn.commit()
+
+    return RedirectResponse(
+        "/admin/users?msg=" + quote(f"已清除 {len(ids)} 筆帳號的開通時間"),
+        status_code=303,
+    )
+
+
 @app.post("/admin/users/group-activate")
 def admin_users_group_activate(
     request: Request,
