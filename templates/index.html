@@ -353,6 +353,10 @@
               onclick="toggleSection('faceTotalCard', this)">
               🎟️ 顯示總票面/票面(餘)
             </button>
+
+            <button type="button" class="seg-btn" id="btnToggleNotice" onclick="toggleSection('noticeCard', this)">
+              🔔 隱藏通知
+            </button>
           </div>
         </div>
 
@@ -628,6 +632,7 @@
       initToggle('expenseCard', 'btnToggleExpense', '💸 顯示今日開銷', '💸 隱藏今日開銷');
       initToggle('todayCard', 'btnToggleToday', '💰 顯示今日實收/淨利', '💰 隱藏今日實收/淨利');
       initToggle('faceTotalCard', 'btnToggleFaceTotal', '🎟️ 顯示總票面/票面(餘)', '🎟️ 隱藏總票面/票面(餘)');
+      initToggle('noticeCard', 'btnToggleNotice', '🔔 顯示通知', '🔔 隱藏通知');
 
       // 目前資料搜尋
       const currentSearch = document.getElementById('currentSearch');
@@ -669,6 +674,7 @@
         expenseCard: ['💸 顯示今日開銷', '💸 隱藏今日開銷'],
         todayCard: ['💰 顯示今日實收/淨利', '💰 隱藏今日實收/淨利'],
         faceTotalCard: ['🎟️ 顯示總票面/票面(餘)', '🎟️ 隱藏總票面/票面(餘)'],
+        noticeCard: ['🔔 顯示通知', '🔔 隱藏通知'],
       };
 
       const t = map[id];
