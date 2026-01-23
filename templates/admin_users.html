@@ -167,12 +167,28 @@
             style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
           <button class="btn" type="submit">新增</button>
         </form>
+      
+      <!-- 批次操作：清除開通時間（僅已開通可勾選） -->
+      <div class="card" style="margin-top:12px;">
+        <h3 style="margin:0 0 10px;">批次操作</h3>
+        <form id="bulkClearForm" method="post" action="/admin/users/activate-clear-multiple"
+          style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0;">
+          <label class="pill" style="margin:0;">
+            <input id="selectAllActive" type="checkbox">
+            全選已開通
+          </label>
+          <button class="btn sm danger" type="submit">清除勾選帳號的開通時間</button>
+          <span class="muted2">只會清除「已開通」帳號；未開通帳號不能勾選。</span>
+        </form>
       </div>
+
+</div>
 
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th style="width:70px;">勾選</th>
               <th>ID</th>
               <th>名稱</th>
               <th>帳號</th>
@@ -190,6 +206,13 @@
             <tr class="user-row" data-id="{{ u.id }}" data-username="{{ u.username|lower }}"
               data-active="{% if u.activated_at %}1{% else %}0{% endif %}"
               data-activated="{% if u.activated_at %}{{ u.activated_at }}{% endif %}">
+              <td>
+                {% if u.activated_at %}
+                <input class="bulk-clear" type="checkbox" value="{{ u.id }}">
+                {% else %}
+                <input type="checkbox" disabled>
+                {% endif %}
+              </td>
               <td>{{ u.id }}</td>
               <td>{{ u.display_name }}</td>
               <td>{{ u.username }}</td>
@@ -308,7 +331,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="7" class="muted" style="padding:12px;">目前沒有帳號</td>
+              <td colspan="9" class="muted" style="padding:12px;">目前沒有帳號</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -407,7 +430,45 @@
 
       document.getElementById('searchInput').addEventListener('input', applyFilter);
       document.getElementById('onlyNotActive').addEventListener('change', applyFilter);
-    });
+    
+      // 批次：全選已開通
+      const selAll = document.getElementById('selectAllActive');
+      if (selAll) {
+        selAll.addEventListener('change', () => {
+          const on = selAll.checked;
+          document.querySelectorAll('input.bulk-clear').forEach(cb => {
+            if (!cb.disabled) cb.checked = on;
+          });
+        });
+      }
+
+      // 批次：送出清除開通時間（把勾選的 id 組成 user_ids[]）
+      const bulkForm = document.getElementById('bulkClearForm');
+      if (bulkForm) {
+        bulkForm.addEventListener('submit', (e) => {
+          // 清掉上次加的 hidden input
+          bulkForm.querySelectorAll('input[name="user_ids"]').forEach(x => x.remove());
+
+          const checked = Array.from(document.querySelectorAll('input.bulk-clear:checked'));
+          if (checked.length === 0) {
+            e.preventDefault();
+            alert('請先勾選要清除開通時間的帳號（只能勾選已開通）。');
+            return;
+          }
+          if (!confirm(`確定要清除 ${checked.length} 個帳號的開通時間？`)) {
+            e.preventDefault();
+            return;
+          }
+          checked.forEach(cb => {
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'user_ids';
+            inp.value = cb.value;
+            bulkForm.appendChild(inp);
+          });
+        });
+      }
+});
   </script>
 </body>
 
