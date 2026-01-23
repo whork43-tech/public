@@ -704,12 +704,21 @@ def compute_group_summary(
     master_user_id: int, year: int | None = None, month: int | None = None
 ) -> dict:
     """
-    只計算『連結帳號』的指定月份淨利 + 帳號顯示名稱
+    連結帳號彙總（不影響各帳號原本資料與功能）
+    每個子帳號提供：
+    - 月淨利（指定月份）
+    - 今日實收、今日淨利
+    - 總票面（未結清）
     """
     child_ids = get_child_user_ids(master_user_id)
-
     if not child_ids:
-        return {"month_total": 0, "per_user": []}
+        return {
+            "month_total": 0,
+            "today_total": 0,
+            "today_net_total": 0,
+            "face_total": 0,
+            "per_user": [],
+        }
 
     placeholders = ",".join([PH] * len(child_ids))
 
@@ -735,26 +744,47 @@ def compute_group_summary(
             user_map[uid] = {"username": r[1], "display_name": r[2] or ""}
 
     per_user = []
-    total = 0
+    month_total = 0
+    today_total_sum = 0
+    today_net_sum = 0
+    face_total_sum = 0
 
     for uid in child_ids:
-        month_net = get_month_net_for_user(uid, year=year, month=month)
-        total += month_net
-        info = user_map.get(uid, {"username": "", "display_name": ""})
+        month_net = int(get_month_net_for_user(uid, year=year, month=month))
+        t_total = int(get_today_total_for_user(uid))
+        t_exp = int(get_today_expense_total_for_user(uid))
+        t_net = t_total - t_exp
+        face_total, _face_left = compute_user_face_totals(uid)
+        face_total = int(face_total)
 
+        month_total += month_net
+        today_total_sum += t_total
+        today_net_sum += t_net
+        face_total_sum += face_total
+
+        info = user_map.get(uid, {"username": "", "display_name": ""})
         per_user.append(
             {
                 "user_id": uid,
                 "username": info["username"],
                 "display_name": info["display_name"],
-                "month_net": int(month_net),
+                "month_net": month_net,
+                "today_total": t_total,
+                "today_net": t_net,
+                "face_total": face_total,
             }
         )
 
-    # ✅ 排序：淨利高到低
-    per_user.sort(key=lambda x: x["month_net"], reverse=True)
+    # ✅ 排序：月淨利高到低
+    per_user.sort(key=lambda x: int(x.get("month_net", 0)), reverse=True)
 
-    return {"month_total": int(total), "per_user": per_user}
+    return {
+        "month_total": int(month_total),
+        "today_total": int(today_total_sum),
+        "today_net_total": int(today_net_sum),
+        "face_total": int(face_total_sum),
+        "per_user": per_user,
+    }
 
 
 from datetime import date
