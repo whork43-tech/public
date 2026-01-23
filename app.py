@@ -1663,8 +1663,10 @@ def group_month(request: Request):
         return RedirectResponse("/", status_code=303)
 
     # 連結功能：7天試用 + 付費（回傳 4 個值）
-    ok, mode, until, msg = get_group_access_status(user["user_id"])
-    if not ok:
+    group_access_ok, group_access_mode, group_access_until, msg = get_group_access_status(
+        user["user_id"]
+    )
+    if not group_access_ok:
         return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
 
     # ym=YYYY-MM（不給就用當月）
@@ -1684,21 +1686,56 @@ def group_month(request: Request):
     show_m = month or today.month
     show_ym = f"{show_y:04d}-{show_m:02d}"
 
+    # ✅ 讀已連結帳號（提供給模板顯示/解除連結）
+    linked_accounts: list[dict] = []
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT al.id AS link_id, u.username, u.display_name
+                FROM account_links al
+                JOIN users u ON u.id = al.child_user_id
+                WHERE al.master_user_id = {PH}
+                ORDER BY u.id ASC
+                """,
+                (user["user_id"],),
+            )
+            rows = cur.fetchall()
+
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            linked_accounts.append(
+                {
+                    "link_id": int(r["link_id"]),
+                    "username": r["username"],
+                    "display_name": r["display_name"] or "",
+                }
+            )
+        else:
+            linked_accounts.append(
+                {"link_id": int(r[0]), "username": r[1], "display_name": r[2] or ""}
+            )
+
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
+            "msg": msg,
+            "group_access_ok": group_access_ok,
+            "group_access_mode": group_access_mode,
+            "group_access_until": (
+                group_access_until.isoformat() if group_access_until else ""
+            ),
+            "linked_accounts": linked_accounts,
             "group_summary": group_summary,
             "show_ym": show_ym,
-            "group_mode": mode,
-            "group_until": (until.isoformat() if until else ""),
-            "group_msg": msg,
         },
     )
 
 
 @app.get("/history")
+
 def history(request: Request):
     user = require_active(request)
     if not user:
