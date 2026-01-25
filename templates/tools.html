@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LINE / Excel｜工具</title>
+  <link rel="stylesheet" href="/static/style.css?v=1003">
+  <style>
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .inline { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .ok-box { border:1px solid #bbf7d0; background:#f0fff4; }
+    .msg { margin:12px 0; padding:10px 12px; border-radius:12px; background:#fff; border:1px solid #e5e7eb; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+    @media (max-width: 900px){ .grid2{ grid-template-columns:1fr; } }
+    .card { background:#fff; border-radius:18px; box-shadow: 0 8px 24px rgba(0,0,0,.06); padding:14px; }
+    .card h3 { margin:4px 0 10px; }
+    .checks { display:grid; grid-template-columns: 1fr 1fr; gap:8px 14px; }
+    @media (max-width: 520px){ .checks{ grid-template-columns:1fr; } }
+    .small { font-size: 13px; color:#6b7280; }
+    .inp { width:100%; max-width:420px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:20px;">📤</span>
+            <div>
+              <div style="font-size:18px; font-weight:800;">LINE 回報 / Excel 匯出</div>
+              <div class="small">目前登入： <b>{{ user.display_name or user.username }}</b>（{{ user.username }}）</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="inline">
+          <label class="small">月份</label>
+          <input id="ymPicker" type="month" value="{{ ym }}" />
+          <a class="btn" href="/">← 返回首頁</a>
+        </div>
+      </div>
+
+      <div class="msg ok-box" style="margin-top:12px;">
+        ✅ 已開通｜到期： <b>{{ tools_until }}</b>
+        <span class="small">（本功能為加購，無試用期）</span>
+      </div>
+
+      {% if request.query_params.get('msg') %}
+      <div class="msg">{{ request.query_params.get('msg') }}</div>
+      {% endif %}
+
+      <div class="card" style="margin-top:12px;">
+        <h3>🔑 LINE Notify Token</h3>
+        <div class="small">請在 LINE Notify 建立 Token 後貼到這裡（只會儲存在你的帳號，用於回報）。</div>
+        <form method="post" action="/tools/save-token" style="margin-top:10px;">
+          <input class="inp" type="text" name="token" placeholder="貼上 LINE Notify Token" value="{{ token }}" />
+          <div style="margin-top:10px;">
+            <button class="btn" type="submit">儲存 Token</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="grid2" style="margin-top:14px;">
+        <div class="card">
+          <h3>📲 LINE 回報</h3>
+          <div class="small">用勾選方式選擇要回報的資料。</div>
+
+          <form method="post" action="/tools/send-line" style="margin-top:10px;">
+            <input type="hidden" name="ym" value="{{ ym }}">
+            <div class="checks">
+              <label><input type="checkbox" name="r_today_total" value="1" checked> 💰 今日實收（{{ today_total }}）</label>
+              <label><input type="checkbox" name="r_today_expense" value="1" checked> 💸 今日開銷（{{ today_expense_total }}）</label>
+              <label><input type="checkbox" name="r_today_net" value="1" checked> ✅ 今日淨利（{{ today_net }}）</label>
+              <label><input type="checkbox" name="r_month_net" value="1" checked> 📈 月淨利（{{ month_net }}）</label>
+              <label><input type="checkbox" name="r_face_total" value="1"> 🎟️ 總票面（{{ total_face_value }}）</label>
+              <label><input type="checkbox" name="r_face_left" value="1"> 🎟️ 總票面(餘)（{{ total_face_value_left }}）</label>
+              <label><input type="checkbox" name="r_due" value="1" checked> 🔔 到期/逾期（今日{{ today_due }}｜明日{{ tomorrow_due }}｜逾期{{ overdue }}）</label>
+            </div>
+
+            <div style="margin-top:10px;">
+              <input class="inp" type="text" name="note" placeholder="備註（可不填）" />
+            </div>
+
+            <div style="margin-top:12px;">
+              <button class="btn" type="submit">送出 LINE 回報</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>📄 Excel 匯出</h3>
+          <div class="small">匯出為精緻表格（含表頭樣式、凍結標題列、條紋列）。</div>
+
+          <form method="post" action="/tools/export-excel" style="margin-top:10px;">
+            <input type="hidden" name="ym" value="{{ ym }}">
+            <div class="checks">
+              <label><input type="checkbox" name="ex_summary" value="1" checked> 總覽（統計）</label>
+              <label><input type="checkbox" name="ex_records" value="1" checked> 目前資料（清單）</label>
+              <label><input type="checkbox" name="ex_payments" value="1" checked> 繳款明細（本月）</label>
+              <label><input type="checkbox" name="ex_expenses" value="1"> 開銷明細（本月）</label>
+            </div>
+
+            <div style="margin-top:12px;">
+              <button class="btn" type="submit">下載 Excel</button>
+            </div>
+          </form>
+
+          <div class="small" style="margin-top:10px;">
+            小提醒：如果資料量很大，下載會稍等一下。
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const ym = document.getElementById('ymPicker');
+      if(!ym) return;
+      ym.addEventListener('change', function(){
+        const v = ym.value;
+        if(!v) return;
+        window.location.href = '/tools?ym=' + encodeURIComponent(v);
+      });
+    })();
+  </script>
+</body>
+</html>
