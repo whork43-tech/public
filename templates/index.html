@@ -210,49 +210,70 @@
     }
 
     /* ✅ 防止功能/顯示區塊超出頁面（避免水平捲動） */
-    .container{
+    .container {
       width: min(1100px, 100%);
       margin: 0 auto;
       padding: 0 14px;
       box-sizing: border-box;
       overflow-x: hidden;
     }
-    .layout{
-      display:flex;
-      flex-wrap:wrap;
-      align-items:flex-start;
-      gap:16px;
-      max-width:100%;
-      box-sizing:border-box;
+
+    .layout {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 16px;
+      max-width: 100%;
+      box-sizing: border-box;
     }
-    .main{ flex: 1 1 520px; min-width: 0; }
-    .side{ flex: 0 1 360px; min-width: 280px; max-width:100%; }
-    .card{ max-width:100%; box-sizing:border-box; }
+
+    .main {
+      flex: 1 1 520px;
+      min-width: 0;
+    }
+
+    .side {
+      flex: 0 1 360px;
+      min-width: 280px;
+      max-width: 100%;
+    }
+
+    .card {
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
     /* 功能按鈕一行太長時自動換行 */
-    .feature-card{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      align-items:center;
+    .feature-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: center;
     }
-    .feature-card .feature-actions{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      justify-content:center;
+
+    .feature-card .feature-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
     }
-    .feature-card .feature-actions .btn{ margin-left:0 !important; }
+
+    .feature-card .feature-actions .btn {
+      margin-left: 0 !important;
+    }
 
     /* 收費說明：縮小按鈕 */
-    .pricing-mini-btn{
+    .pricing-mini-btn {
       padding: 6px 10px;
       border-radius: 999px;
       font-size: 12px;
       line-height: 1;
       opacity: .9;
     }
-    .pricing-mini-btn:hover{ opacity: 1; }
 
+    .pricing-mini-btn:hover {
+      opacity: 1;
+    }
   </style>
 </head>
 
@@ -302,42 +323,42 @@
     {% else %}
     <!-- 💰 收費說明（未開通 / 試用顯示） -->
     {% if user and access_mode != "activated" %}
-  <div class="card" style="margin-top:14px;">
+    <div class="card" style="margin-top:14px;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <h2 style="margin:0;">收費說明</h2>
         <button type="button" class="btn pricing-mini-btn" id="btnTogglePricing" onclick="togglePricing()">縮小</button>
       </div>
 
       <div id="pricingBody">
-      <p>
-        本系統為 <b>個人放款專用</b> 的分期帳務管理工具，
-        協助你清楚掌握每一筆收款與支出，避免算錯、漏帳。
-      </p>
+        <p>
+          本系統為 <b>個人放款專用</b> 的分期帳務管理工具，
+          協助你清楚掌握每一筆收款與支出，避免算錯、漏帳。
+        </p>
 
-      <ul style="padding-left:18px; line-height:1.8;">
-        <li>🧪 <b>免費試用 7 天</b>（主功能完整開放）</li>
-        <li>💼 主功能開通：<b>NT$ 299 / 月</b></li>
-        <li>👥 連結帳號加購：<b>NT$ 199 / 月</b>（不提供試用）</li>
-        <li>📤 Telegram 回報 + Excel 匯出加購：<b>NT$ 199 / 月</b>（不提供試用）</li>
-        <li>📁 到期未續費 <b>資料不會刪除</b></li>
-        <li>🔐 續費後立即恢復使用</li>
-      </ul>
+        <ul style="padding-left:18px; line-height:1.8;">
+          <li>🧪 <b>免費試用 7 天</b>（主功能完整開放）</li>
+          <li>💼 主功能開通：<b>NT$ 299 / 月</b></li>
+          <li>👥 連結帳號加購：<b>NT$ 199 / 月</b>（不提供試用）</li>
+          <li>📤 Telegram 回報 + Excel 匯出加購：<b>NT$ 199 / 月</b>（不提供試用）</li>
+          <li>📁 到期未續費 <b>資料不會刪除</b></li>
+          <li>🔐 續費後立即恢復使用</li>
+        </ul>
 
-      <hr style="margin:14px 0; opacity:.2;" />
-      <h3 style="margin:0 0 8px; font-size:16px;">功能簡介</h3>
-      <ul style="padding-left:18px; line-height:1.8; margin-top:0;">
-        <li>📝 新增分期資料：自動計算期數、每期金額、到期提醒</li>
-        <li>💰 今日實收 / 今日淨利 / 本月淨利：首頁即時顯示</li>
-        <li>🎫 總票面 / 票面(餘)：掌握未收票面與剩餘</li>
-        <li>🔔 通知：今日到期、明日到期、逾期補繳提醒</li>
-        <li>🧾 歷史繳款：依月/日彙總、明細查看、支援批次刪除</li>
-        <li>👥 連結帳號（加購）：主帳號整合多帳號淨利/實收/開銷/票面</li>
-        <li>📤 Telegram/LINE 回報 + Excel 匯出（加購）：勾選要回報/匯出的資料</li>
-      </ul>
+        <hr style="margin:14px 0; opacity:.2;" />
+        <h3 style="margin:0 0 8px; font-size:16px;">功能簡介</h3>
+        <ul style="padding-left:18px; line-height:1.8; margin-top:0;">
+          <li>📝 新增分期資料：自動計算期數、每期金額、到期提醒</li>
+          <li>💰 今日實收 / 今日淨利 / 本月淨利：首頁即時顯示</li>
+          <li>🎫 總票面 / 票面(餘)：掌握未收票面與剩餘</li>
+          <li>🔔 通知：今日到期、明日到期、逾期補繳提醒</li>
+          <li>🧾 歷史繳款：依月/日彙總、明細查看、支援批次刪除</li>
+          <li>👥 連結帳號（加購）：主帳號整合多帳號淨利/實收/開銷/票面</li>
+          <li>📤 Telegram 回報 + Excel 匯出（加購）：勾選要回報/匯出的資料</li>
+        </ul>
 
-      <p style="margin-bottom:0;">
-        📩 開通或續費請聯絡 LINE：<b>@826ynmlh</b>
-      </p>
+        <p style="margin-bottom:0;">
+          📩 開通或續費請聯絡 LINE：<b>@826ynmlh</b>
+        </p>
       </div>
     </div>
 
@@ -394,33 +415,32 @@
 
 
 
-          {% if group_is_child %}
-          <a class="btn danger" href="javascript:void(0);" onclick="return false;"
-            style="margin-left:10px; pointer-events:none; opacity:.75; cursor:not-allowed;">
-            👥 連結帳號（子帳號不可用）
-          </a>
-          {% elif not group_access_ok %}
-          <a class="btn danger" href="javascript:void(0);" onclick="return false;"
-            style="margin-left:10px; pointer-events:none; opacity:.75; cursor:not-allowed;">
-            👥 連結帳號（未開通/已到期）
-          </a>
-          {% else %}
-          <a class="btn" href="/group-month" style="margin-left:10px;">
-            👥 連結帳號
-          </a>
-          {% endif %}
+            {% if group_is_child %}
+            <a class="btn danger" href="javascript:void(0);" onclick="return false;"
+              style="margin-left:10px; pointer-events:none; opacity:.75; cursor:not-allowed;">
+              👥 連結帳號（子帳號不可用）
+            </a>
+            {% elif not group_access_ok %}
+            <a class="btn danger" href="javascript:void(0);" onclick="return false;"
+              style="margin-left:10px; pointer-events:none; opacity:.75; cursor:not-allowed;">
+              👥 連結帳號（未開通/已到期）
+            </a>
+            {% else %}
+            <a class="btn" href="/group-month" style="margin-left:10px;">
+              👥 連結帳號
+            </a>
+            {% endif %}
 
-          {% if not tools_access_ok %}
-          <a class="btn danger" href="#"
-            onclick="return false;"
-            style="margin-left:10px; pointer-events:none; opacity:.75; cursor:not-allowed;">
-            📤 Telegram/LINE（未開通/已到期）
-          </a>
-          {% else %}
-          <a class="btn" href="/tools" style="margin-left:10px;">
-            📤 Telegram/LINE
-          </a>
-          {% endif %}
+            {% if not tools_access_ok %}
+            <a class="btn danger" href="#" onclick="return false;"
+              style="margin-left:10px; pointer-events:none; opacity:.75; cursor:not-allowed;">
+              📤 Telegram/EXCLE（未開通/已到期）
+            </a>
+            {% else %}
+            <a class="btn" href="/tools" style="margin-left:10px;">
+              📤 Telegram/EXCLE
+            </a>
+            {% endif %}
 
           </div>
         </div>
