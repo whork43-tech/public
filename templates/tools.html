@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LINE / Excel｜工具</title>
+  <title>Telegram / Excel｜工具</title>
   <link rel="stylesheet" href="/static/style.css?v=1003">
   <style>
     .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -28,7 +28,7 @@
           <div style="display:flex; align-items:center; gap:10px;">
             <span style="font-size:20px;">📤</span>
             <div>
-              <div style="font-size:18px; font-weight:800;">LINE 回報 / Excel 匯出</div>
+              <div style="font-size:18px; font-weight:800;">Telegram 回報 / Excel 匯出</div>
               <div class="small">目前登入： <b>{{ user.display_name or user.username }}</b>（{{ user.username }}）</div>
             </div>
           </div>
@@ -51,22 +51,23 @@
       {% endif %}
 
       <div class="card" style="margin-top:12px;">
-        <h3>🔑 LINE Notify Token</h3>
-        <div class="small">請在 LINE Notify 建立 Token 後貼到這裡（只會儲存在你的帳號，用於回報）。</div>
-        <form method="post" action="/tools/save-token" style="margin-top:10px;">
-          <input class="inp" type="text" name="token" placeholder="貼上 LINE Notify Token" value="{{ token }}" />
+        <h3>🔑 Telegram Bot Token</h3>
+        <div class="small">請在 Telegram Bot 建立 Token 後貼到這裡（只會儲存在你的帳號，用於回報）。</div>
+        <form method="post" action="/tools/save-telegram" style="margin-top:10px;">
+          <input type="text" name="bot_token" placeholder="貼上 Telegram Bot Token" value="{{ tg_bot_token }}" />
+          <input type="text" name="chat_id" placeholder="貼上你的 chat_id（數字）" value="{{ tg_chat_id }}" style="margin-top:10px;" />
           <div style="margin-top:10px;">
-            <button class="btn" type="submit">儲存 Token</button>
+            <button class="btn" type="submit">儲存設定</button>
           </div>
         </form>
       </div>
 
       <div class="grid2" style="margin-top:14px;">
         <div class="card">
-          <h3>📲 LINE 回報</h3>
+          <h3>📲 Telegram 回報</h3>
           <div class="small">用勾選方式選擇要回報的資料。</div>
 
-          <form method="post" action="/tools/send-line" style="margin-top:10px;">
+          <form method="post" action="/tools/send-telegram" style="margin-top:10px;">
             <input type="hidden" name="ym" value="{{ ym }}">
             <div class="checks">
               <label><input type="checkbox" name="r_today_total" value="1" checked> 💰 今日實收（{{ today_total }}）</label>
@@ -83,7 +84,7 @@
             </div>
 
             <div style="margin-top:12px;">
-              <button class="btn" type="submit">送出 LINE 回報</button>
+              <button class="btn" type="submit">送出 Telegram 回報</button>
             </div>
           </form>
         </div>
