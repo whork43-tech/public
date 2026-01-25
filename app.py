@@ -12,6 +12,15 @@ from psycopg.rows import tuple_row
 import traceback
 from fastapi.responses import PlainTextResponse
 
+from fastapi.responses import StreamingResponse
+import io
+import requests
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.styles import Font, Alignment, PatternFill
+
+
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -168,6 +177,12 @@ def init_db():
                         "ALTER TABLE users ADD COLUMN group_trial_started_at TEXT"
                     )
 
+                if not _sqlite_has_column(cur, "users", "tools_activated_at"):
+                    cur.execute("ALTER TABLE users ADD COLUMN tools_activated_at TEXT")
+
+                if not _sqlite_has_column(cur, "users", "line_notify_token"):
+                    cur.execute("ALTER TABLE users ADD COLUMN line_notify_token TEXT")
+
             else:
                 cur.execute(
                     """
@@ -219,6 +234,20 @@ ADD COLUMN IF NOT EXISTS group_activated_at TEXT
                     """
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS group_trial_started_at TEXT
+"""
+                )
+
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS tools_activated_at TEXT
+"""
+                )
+
+                cur.execute(
+                    """
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS line_notify_token TEXT
 """
                 )
 
@@ -471,12 +500,13 @@ def _parse_iso_date(s: str | None):
 
 def get_group_access_status(user_id: int):
     """
-    連結帳號功能（付費功能，**不提供試用**）
-
+    連結功能狀態：
+    - 第一次使用：自動啟動 7 天試用（寫入 group_trial_started_at）
+    - 試用中：OK
+    - 付費中：OK（group_activated_at >= today）
+    - 到期：不給用
     回傳 (ok, mode, until, msg)
-    mode: "activated" | "expired"
-      - activated: group_activated_at >= today
-      - expired:   未開通或已到期
+    mode: "activated" | "trial" | "expired"
     """
     init_db()
     today = date.fromisoformat(today_str())
@@ -484,33 +514,51 @@ def get_group_access_status(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
-                f"SELECT group_activated_at FROM users WHERE id = {PH}",
+                f"SELECT group_activated_at, group_trial_started_at FROM users WHERE id = {PH}",
                 (user_id,),
             )
             row = cur.fetchone()
 
-    group_until = None
-    if row:
-        if isinstance(row, sqlite3.Row):
-            group_until = row["group_activated_at"]
-        else:
-            group_until = row[0]
+    if not row:
+        return (False, "expired", None, "帳號不存在")
 
-    if group_until:
-        try:
-            until_date = date.fromisoformat(str(group_until))
-        except Exception:
-            until_date = None
+    if isinstance(row, sqlite3.Row):
+        activated_s = row["group_activated_at"]
+        trial_s = row["group_trial_started_at"]
+    else:
+        activated_s = row[0]
+        trial_s = row[1]
 
-        if until_date and until_date >= today:
-            return True, "activated", until_date, ""
+    activated = _parse_iso_date(activated_s)
+    trial_start = _parse_iso_date(trial_s)
 
-        # 有值但已過期
-        if until_date:
-            return False, "expired", until_date, "連結帳號功能已到期，請到後台重新開通。"
+    # 1) 已付費開通
+    if activated and today <= activated:
+        return (True, "activated", activated, "")
 
-    # 尚未開通
-    return False, "expired", None, "連結帳號功能尚未開通，請到後台開通。"
+    # 2) 試用已開始
+    if trial_start:
+        trial_until = trial_start + timedelta(days=7)
+        if today <= trial_until:
+            return (True, "trial", trial_until, "")
+        return (
+            False,
+            "expired",
+            None,
+            "連結功能試用已到期，請聯絡 LINE：@826ynmlh 開通",
+        )
+
+    # 3) 第一次使用：啟動試用
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET group_trial_started_at = {PH} WHERE id = {PH}",
+                (today.isoformat(), user_id),
+            )
+        conn.commit()
+
+    return (True, "trial", today + timedelta(days=7), "")
+
 
 def get_access_status(user_id: int):
     """
@@ -685,26 +733,17 @@ def compute_group_summary(
     master_user_id: int, year: int | None = None, month: int | None = None
 ) -> dict:
     """
-    連結帳號彙總（不影響各帳號原本資料與功能）
-    每個子帳號提供：
-    - 月淨利（指定月份；規則跟歷史頁月份統計一致：只扣有繳款日期的開銷）
-    - 今日實收、今日淨利
-    - 總票面（未結清）
+    只計算『連結帳號』的指定月份淨利 + 帳號顯示名稱
     """
     child_ids = get_child_user_ids(master_user_id)
+
     if not child_ids:
-        return {
-            "month_total": 0,
-            "today_total": 0,
-            "today_net_total": 0,
-            "face_total": 0,
-            "per_user": [],
-        }
+        return {"month_total": 0, "per_user": []}
 
     placeholders = ",".join([PH] * len(child_ids))
 
     # 一次抓 username/display_name
-    user_map: dict[int, dict] = {}
+    user_map = {}
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
@@ -724,57 +763,30 @@ def compute_group_summary(
             uid = int(r[0])
             user_map[uid] = {"username": r[1], "display_name": r[2] or ""}
 
-    per_user: list[dict] = []
-    month_total = 0
-    today_total_sum = 0
-    today_expense_sum = 0
-    today_net_sum = 0
-    face_total_sum = 0
+    per_user = []
+    total = 0
 
     for uid in child_ids:
-        # ✅ 月淨利：跟該帳號「歷史繳款」月份統計一致
-        month_net = int(get_month_net_like_history(uid, year=year, month=month))
-
-        # 今日實收/淨利
-        t_total = int(get_today_total_for_user(uid))
-        t_exp = int(get_today_expense_total_for_user(uid))
-        t_net = t_total - t_exp
-
-        # 總票面（未結清）
-        face_total, _face_left = compute_user_face_totals(uid)
-        face_total = int(face_total)
-
-        month_total += month_net
-        today_total_sum += t_total
-        today_expense_sum += t_exp
-        today_net_sum += t_net
-        face_total_sum += face_total
-
+        month_net = get_month_net_for_user(uid, year=year, month=month)
+        total += month_net
         info = user_map.get(uid, {"username": "", "display_name": ""})
+
         per_user.append(
             {
                 "user_id": uid,
                 "username": info["username"],
                 "display_name": info["display_name"],
-                "month_net": month_net,
-                "today_total": t_total,
-                "today_expense": t_exp,
-                "today_net": t_net,
-                "face_total": face_total,
+                "month_net": int(month_net),
             }
         )
 
-    # ✅ 排序：月淨利高到低
-    per_user.sort(key=lambda x: int(x.get("month_net", 0)), reverse=True)
+    # ✅ 排序：淨利高到低
+    per_user.sort(key=lambda x: x["month_net"], reverse=True)
 
-    return {
-        "month_total": int(month_total),
-        "today_total": int(today_total_sum),
-        "today_expense_total": int(today_expense_sum),
-        "today_net_total": int(today_net_sum),
-        "face_total": int(face_total_sum),
-        "per_user": per_user,
-    }
+    return {"month_total": int(total), "per_user": per_user}
+
+
+from datetime import date
 
 
 def _month_start_end(year: int, month: int) -> tuple[str, str]:
@@ -830,85 +842,6 @@ def get_month_net_for_user(
     return int(income) - int(expense)
 
 
-def get_month_net_like_history(
-    user_id: int, year: int | None = None, month: int | None = None
-) -> int:
-    """
-    ✅ 讓「首頁本月淨利」與「歷史繳款」頁面的「月淨利」完全一致的算法。
-
-    規則（沿用你歷史頁的統計邏輯）：
-    - 月收入：該月 payments 的總和
-    - 月開銷：只扣「該月有繳款的日期」的 expenses（也就是：有繳款日才算入開銷）
-    """
-    today = date.fromisoformat(today_str())
-    y = int(year or today.year)
-    m = int(month or today.month)
-    month_start, month_end = _month_start_end(y, m)
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            # 該月實收
-            cur.execute(
-                f"""
-                SELECT COALESCE(SUM(amount), 0)
-                FROM payments
-                WHERE user_id = {PH}
-                  AND paid_at >= {PH}
-                  AND paid_at < {PH}
-                """,
-                (user_id, month_start, month_end),
-            )
-            income_row = cur.fetchone()
-            income = (
-                (income_row[0] if not isinstance(income_row, sqlite3.Row) else income_row[0])
-                if income_row
-                else 0
-            )
-
-            # 該月有繳款的日期（用於扣開銷）
-            cur.execute(
-                f"""
-                SELECT DISTINCT paid_at
-                FROM payments
-                WHERE user_id = {PH}
-                  AND paid_at >= {PH}
-                  AND paid_at < {PH}
-                """,
-                (user_id, month_start, month_end),
-            )
-            date_rows = cur.fetchall()
-
-    pay_dates: list[str] = []
-    for r in date_rows:
-        d = r[0] if not isinstance(r, sqlite3.Row) else r[0]
-        if d:
-            pay_dates.append(d if isinstance(d, str) else d.isoformat())
-
-    # 該月沒有任何繳款日 -> 依歷史頁規則：不扣任何開銷
-    if not pay_dates:
-        return int(income or 0)
-
-    placeholders = ",".join([PH] * len(pay_dates))
-    params = [user_id, *pay_dates]
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"""
-                SELECT COALESCE(SUM(amount), 0)
-                FROM expenses
-                WHERE user_id = {PH}
-                  AND spent_at IN ({placeholders})
-                """,
-                params,
-            )
-            exp_row = cur.fetchone()
-
-    expense = exp_row[0] if exp_row else 0
-    return int(income or 0) - int(expense or 0)
-
-
-
 # ======================
 # Business logic
 # ======================
@@ -918,66 +851,69 @@ def calc_current_day(created_date_obj: date) -> int:
 
 
 def get_linked_accounts(master_user_id: int) -> list[dict]:
-    """
-    取得主帳號已連結的子帳號清單（含 link_id 供解除連結使用）。
-    另外帶 main_active（子帳號主功能是否有效）供需要時顯示，但不影響既有功能。
-    """
-    init_db()
+    ids = get_child_user_ids(master_user_id)
+    if not ids:
+        return []
+
+    phs = ",".join([PH] * len(ids))
+    out = []
 
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
                 f"""
-                SELECT
-                    al.id            AS link_id,
-                    u.id             AS user_id,
-                    u.username       AS username,
-                    u.display_name   AS display_name,
-                    u.activated_at   AS activated_at,
-                    u.trial_until    AS trial_until
-                FROM account_links al
-                JOIN users u ON u.id = al.child_user_id
-                WHERE al.master_user_id = {PH}
-                ORDER BY u.id ASC
+                SELECT id, username, display_name, activated_at, trial_until
+                FROM users
+                WHERE id IN ({phs})
                 """,
-                (master_user_id,),
+                tuple(ids),
             )
             rows = cur.fetchall()
 
     today = date.fromisoformat(today_str())
-    out: list[dict] = []
 
+    # 做 map，確保順序跟 ids 一樣
+    tmp = {}
     for r in rows:
         if isinstance(r, sqlite3.Row):
+            uid = int(r["id"])
             activated_at = _parse_iso_date(r["activated_at"])
             trial_until = _parse_iso_date(r["trial_until"])
-            out.append(
-                {
-                    "link_id": int(r["link_id"]),
-                    "user_id": int(r["user_id"]),
-                    "username": r["username"],
-                    "display_name": r["display_name"] or "",
-                    "main_active": bool(
-                        (activated_at and today <= activated_at)
-                        or (trial_until and today <= trial_until)
-                    ),
-                }
-            )
+            tmp[uid] = {
+                "user_id": uid,
+                "username": r["username"],
+                "display_name": r["display_name"] or "",
+                "main_active": bool(
+                    (activated_at and today <= activated_at)
+                    or (trial_until and today <= trial_until)
+                ),
+            }
         else:
-            activated_at = _parse_iso_date(r[4])
-            trial_until = _parse_iso_date(r[5])
-            out.append(
+            uid = int(r[0])
+            activated_at = _parse_iso_date(r[3])
+            trial_until = _parse_iso_date(r[4])
+            tmp[uid] = {
+                "user_id": uid,
+                "username": r[1],
+                "display_name": r[2] or "",
+                "main_active": bool(
+                    (activated_at and today <= activated_at)
+                    or (trial_until and today <= trial_until)
+                ),
+            }
+
+    for uid in ids:
+        out.append(
+            tmp.get(
+                uid,
                 {
-                    "link_id": int(r[0]),
-                    "user_id": int(r[1]),
-                    "username": r[2],
-                    "display_name": r[3] or "",
-                    "main_active": bool(
-                        (activated_at and today <= activated_at)
-                        or (trial_until and today <= trial_until)
-                    ),
-                }
+                    "user_id": uid,
+                    "username": "",
+                    "display_name": "",
+                    "main_active": False,
+                },
             )
+        )
 
     return out
 
@@ -1354,7 +1290,7 @@ def home(request: Request):
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
-    my_month_net = int(get_month_net_like_history(user["user_id"]))
+    my_month_net = get_month_net_for_user(user["user_id"])
 
     # ✅ 今日淨收
     today_net = int(today_total) - int(today_expense_total)
@@ -1374,6 +1310,11 @@ def home(request: Request):
         if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
     )
 
+            # ✅ 加購功能：LINE/Excel（不提供試用）
+    tools_access_ok, tools_access_mode, tools_access_until, tools_access_msg = (
+        get_tools_access_status(user["user_id"])
+    )
+
     if user and master_mode:
         group_access_ok, group_access_mode, group_access_until, group_access_msg = (
             get_group_access_status(user["user_id"])
@@ -1386,7 +1327,7 @@ def home(request: Request):
             "",
         )
 
-    return templates.TemplateResponse(
+return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
@@ -1411,12 +1352,17 @@ def home(request: Request):
             # 其他（你要留也行，不會漏）
             "paid_id": paid_id,
             "master_mode": master_mode,
-            "group_is_child": (not master_mode),
             "due_today_count": due_today_count,
             "group_access_ok": group_access_ok,
             "group_access_mode": group_access_mode,
             "group_access_until": (
                 group_access_until.isoformat() if group_access_until else ""
+            ),
+
+            "tools_access_ok": tools_access_ok,
+            "tools_access_mode": tools_access_mode,
+            "tools_access_until": (
+                tools_access_until.isoformat() if tools_access_until else ""
             ),
         },
     )
@@ -1708,33 +1654,17 @@ def add_record(
                 if has_item and has_note:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, item, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
-                        (
-                            today_str(),
-                            f"新增資料支出：{name}",
-                            expense_amount_today,
-                            "",
-                            user["user_id"],
-                        ),
+                        (today_str(), f"新增資料支出：{name}", expense_amount_today, "", user["user_id"]),
                     )
                 elif has_item:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (
-                            today_str(),
-                            f"新增資料支出：{name}",
-                            expense_amount_today,
-                            user["user_id"],
-                        ),
+                        (today_str(), f"新增資料支出：{name}", expense_amount_today, user["user_id"]),
                     )
                 elif has_note:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (
-                            today_str(),
-                            expense_amount_today,
-                            f"新增資料支出：{name}",
-                            user["user_id"],
-                        ),
+                        (today_str(), expense_amount_today, f"新增資料支出：{name}", user["user_id"]),
                     )
                 else:
                     cur.execute(
@@ -1748,23 +1678,12 @@ def add_record(
                 if has_record_name:
                     cur.execute(
                         f"INSERT INTO payments (paid_at, amount, record_id, record_name, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
-                        (
-                            today_str(),
-                            int(amount or 0),
-                            int(record_id),
-                            name,
-                            user["user_id"],
-                        ),
+                        (today_str(), int(amount or 0), int(record_id), name, user["user_id"]),
                     )
                 else:
                     cur.execute(
                         f"INSERT INTO payments (paid_at, amount, record_id, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (
-                            today_str(),
-                            int(amount or 0),
-                            int(record_id),
-                            user["user_id"],
-                        ),
+                        (today_str(), int(amount or 0), int(record_id), user["user_id"]),
                     )
 
         conn.commit()
@@ -1779,33 +1698,14 @@ def group_month(request: Request):
     if not user or isinstance(user, RedirectResponse):
         return user
 
-
-    # 子帳號不可使用（也避免誤觸發試用/開通狀態）
-    if is_child_user(user["user_id"]):
-        return RedirectResponse(
-            url="/?paid_msg=" + quote("子帳號不可使用連結帳號功能"),
-            status_code=303,
-        )
-
-    # 只有主帳號能使用（子帳號不給操作）
-    group_is_child = is_child_user(user["user_id"])
-    master_ok = not group_is_child
+    # 只有 master 才能看
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse("/", status_code=303)
 
     # 連結功能：7天試用 + 付費（回傳 4 個值）
-    group_access_ok, group_access_mode, group_access_until, msg0 = (
-        get_group_access_status(user["user_id"])
-    )
-
-    # 功能未開通/已到期：直接回首頁（避免進入頁面才看到錯誤）
-    if not group_access_ok:
-        return RedirectResponse(
-            url="/?paid_msg=" + quote(msg0 or "連結帳號功能未開通/已到期"),
-            status_code=303,
-        )
-
-
-    # msg：優先顯示 query 的 msg（例如新增/解除完成），否則顯示狀態訊息
-    msg = (request.query_params.get("msg") or "").strip() or (msg0 or "")
+    ok, mode, until, msg = get_group_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
 
     # ym=YYYY-MM（不給就用當月）
     ym = (request.query_params.get("ym") or "").strip()
@@ -1817,165 +1717,25 @@ def group_month(request: Request):
         except Exception:
             year = month = None
 
+    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
+
     today = date.fromisoformat(today_str())
     show_y = year or today.year
     show_m = month or today.month
     show_ym = f"{show_y:04d}-{show_m:02d}"
-
-    linked_accounts = get_linked_accounts(user["user_id"]) if master_ok else []
-
-    # 只有「主帳號 + 功能已開通」才計算彙總
-    group_summary = None
-    if master_ok and group_access_ok:
-        group_summary = compute_group_summary(user["user_id"], year=year, month=month)
-
-    # 子帳號：強制視為不可用（避免誤用）
-    if group_is_child:
-        group_access_ok = False
-        group_access_mode = "child"
-        group_access_until = None
-        if not msg:
-            msg = "子帳號不可使用連結帳號功能"
 
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
-            "group_access_ok": group_access_ok and master_ok,
-            "group_access_mode": group_access_mode,
-            "group_access_until": (
-                group_access_until.isoformat() if group_access_until else ""
-            ),
-            "msg": msg,
-            "linked_accounts": linked_accounts,
             "group_summary": group_summary,
             "show_ym": show_ym,
+            "group_mode": mode,
+            "group_until": (until.isoformat() if until else ""),
+            "group_msg": msg,
         },
     )
-
-
-@app.post("/group/link/add")
-def group_link_add(
-    request: Request,
-    child_username: str = Form(...),
-    child_password: str = Form(...),
-):
-    init_db()
-    user = require_active(request)
-    if not user or isinstance(user, RedirectResponse):
-        return RedirectResponse("/login", status_code=303)
-
-    # 子帳號不可新增連結
-    if is_child_user(user["user_id"]):
-        return RedirectResponse(
-            "/group-month?msg=" + quote("子帳號不可使用連結功能"),
-            status_code=303,
-        )
-
-    # 連結功能必須開通/試用中
-    ok, _mode, _until, msg = get_group_access_status(user["user_id"])
-    if not ok:
-        return RedirectResponse("/group-month?msg=" + quote(msg), status_code=303)
-
-    child_username = (child_username or "").strip()
-    child_password = (child_password or "").strip()
-    if not child_username or not child_password:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("請填子帳號與密碼"), status_code=303
-        )
-
-    if child_username == user["username"]:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("不可連結自己"), status_code=303
-        )
-
-    # 驗證子帳號
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"SELECT id, password_hash FROM users WHERE username = {PH}",
-                (child_username,),
-            )
-            row = cur.fetchone()
-
-    if not row:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("找不到子帳號"), status_code=303
-        )
-
-    if isinstance(row, sqlite3.Row):
-        child_id = int(row["id"])
-        pw_hash = row["password_hash"]
-    else:
-        child_id = int(row[0])
-        pw_hash = row[1]
-
-    if not verify_password(child_password, pw_hash):
-        return RedirectResponse(
-            "/group-month?msg=" + quote("子帳號密碼錯誤"), status_code=303
-        )
-
-    # 子帳號只能被一個主帳號連結
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"SELECT 1 FROM account_links WHERE child_user_id = {PH} LIMIT 1",
-                (child_id,),
-            )
-            exists = cur.fetchone()
-    if exists:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("此子帳號已被連結"), status_code=303
-        )
-
-    # 寫入連結
-    try:
-        with get_conn() as conn:
-            with get_cursor(conn) as cur:
-                cur.execute(
-                    f"INSERT INTO account_links (master_user_id, child_user_id) VALUES ({PH}, {PH})",
-                    (user["user_id"], child_id),
-                )
-            conn.commit()
-    except Exception:
-        return RedirectResponse(
-            "/group-month?msg=" + quote("新增失敗：可能已存在"), status_code=303
-        )
-
-    return RedirectResponse("/group-month?msg=" + quote("連結完成"), status_code=303)
-
-
-@app.post("/group/link/delete")
-def group_link_delete(
-    request: Request,
-    link_id: int = Form(...),
-):
-    init_db()
-    user = require_active(request)
-    if not user or isinstance(user, RedirectResponse):
-        return RedirectResponse("/login", status_code=303)
-
-    if is_child_user(user["user_id"]):
-        return RedirectResponse(
-            "/group-month?msg=" + quote("子帳號不可使用連結功能"),
-            status_code=303,
-        )
-
-    ok, _mode, _until, msg = get_group_access_status(user["user_id"])
-    if not ok:
-        return RedirectResponse("/group-month?msg=" + quote(msg), status_code=303)
-
-    # 只能刪自己的連結
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"DELETE FROM account_links WHERE id = {PH} AND master_user_id = {PH}",
-                (link_id, user["user_id"]),
-            )
-        conn.commit()
-
-    return RedirectResponse("/group-month?msg=" + quote("已解除連結"), status_code=303)
 
 
 @app.get("/history")
@@ -2088,6 +1848,482 @@ def admin_links_page(request: Request):
     return HTMLResponse(html)
 
 
+
+# ======================
+# LINE 回報 + Excel 匯出（加購功能）
+# ======================
+
+def _get_line_notify_token(user_id: int) -> str:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT line_notify_token FROM users WHERE id = {PH}",
+                (user_id,),
+            )
+            row = cur.fetchone()
+    if not row:
+        return ""
+    if isinstance(row, sqlite3.Row):
+        return row["line_notify_token"] or ""
+    return (row[0] or "")
+
+def _set_line_notify_token(user_id: int, token: str) -> None:
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET line_notify_token = {PH} WHERE id = {PH}",
+                (token, user_id),
+            )
+        conn.commit()
+
+def _get_month_range(ym: str | None):
+    """ym='YYYY-MM' -> (year, month), fallback to today."""
+    today = date.fromisoformat(today_str())
+    if ym and len(ym) == 7 and ym[4] == "-":
+        try:
+            y = int(ym[:4]); m = int(ym[5:7])
+            if 1 <= m <= 12:
+                return y, m
+        except Exception:
+            pass
+    return today.year, today.month
+
+def _get_payments_in_month(user_id: int, year: int, month: int):
+    # 取該月所有繳款明細（含第幾期）
+    start = date(year, month, 1).isoformat()
+    if month == 12:
+        end = date(year + 1, 1, 1).isoformat()
+    else:
+        end = date(year, month + 1, 1).isoformat()
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT p.id, p.paid_at, r.name, p.amount, p.record_id
+                FROM payments p
+                JOIN records r ON r.id = p.record_id
+                WHERE p.user_id = {PH}
+                  AND p.paid_at >= {PH} AND p.paid_at < {PH}
+                ORDER BY p.record_id ASC, p.paid_at ASC, p.id ASC
+                """,
+                (user_id, start, end),
+            )
+            rows = cur.fetchall()
+
+    # 算每個 record 的第幾期（該月內的序號，不影響原本資料）
+    seq = {}
+    out = []
+    for rr in rows:
+        pid = rr["id"] if isinstance(rr, sqlite3.Row) else rr[0]
+        paid_at = rr["paid_at"] if isinstance(rr, sqlite3.Row) else rr[1]
+        name = rr["name"] if isinstance(rr, sqlite3.Row) else rr[2]
+        amount = rr["amount"] if isinstance(rr, sqlite3.Row) else rr[3]
+        record_id = rr["record_id"] if isinstance(rr, sqlite3.Row) else rr[4]
+
+        seq[record_id] = seq.get(record_id, 0) + 1
+        period_no = seq[record_id]
+        paid_at_str = paid_at if isinstance(paid_at, str) else paid_at.isoformat()
+
+        out.append(
+            {
+                "id": int(pid),
+                "date": paid_at_str,
+                "name": str(name),
+                "amount": int(amount),
+                "period_no": int(period_no),
+            }
+        )
+    return out
+
+def _get_expenses_in_month(user_id: int, year: int, month: int):
+    start = date(year, month, 1).isoformat()
+    if month == 12:
+        end = date(year + 1, 1, 1).isoformat()
+    else:
+        end = date(year, month + 1, 1).isoformat()
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT id, spent_at, item, amount
+                FROM expenses
+                WHERE user_id = {PH}
+                  AND spent_at >= {PH} AND spent_at < {PH}
+                ORDER BY spent_at DESC, id DESC
+                """,
+                (user_id, start, end),
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for rr in rows:
+        eid = rr["id"] if isinstance(rr, sqlite3.Row) else rr[0]
+        spent_at = rr["spent_at"] if isinstance(rr, sqlite3.Row) else rr[1]
+        item = rr["item"] if isinstance(rr, sqlite3.Row) else rr[2]
+        amount = rr["amount"] if isinstance(rr, sqlite3.Row) else rr[3]
+        spent_at_str = spent_at if isinstance(spent_at, str) else spent_at.isoformat()
+        out.append({"id": int(eid), "date": spent_at_str, "item": str(item), "amount": int(amount)})
+    return out
+
+def _style_sheet_as_table(ws, table_name: str):
+    # 設定標題列樣式
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="2563EB")  # 藍
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.freeze_panes = "A2"
+
+    # 自動欄寬
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for c in col:
+            v = "" if c.value is None else str(c.value)
+            if len(v) > max_len:
+                max_len = len(v)
+        ws.column_dimensions[col_letter].width = min(max(10, max_len + 2), 40)
+
+    # 建 table（至少有 2 列）
+    if ws.max_row >= 2 and ws.max_column >= 1:
+        last_cell = f"{get_column_letter(ws.max_column)}{ws.max_row}"
+        tab = Table(displayName=table_name, ref=f"A1:{last_cell}")
+        style = TableStyleInfo(
+            name="TableStyleMedium9",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        tab.tableStyleInfo = style
+        ws.add_table(tab)
+
+@app.get("/tools")
+def tools_page(request: Request):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    ok, mode, until, msg = get_tools_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+
+    ym = (request.query_params.get("ym") or "").strip()
+    y, m = _get_month_range(ym)
+    show_ym = f"{y:04d}-{m:02d}"
+
+    # 取統計（跟首頁一致）
+    rows_raw = get_all_records_for_user(user["user_id"])
+    rows = [row_to_view(r) for r in rows_raw]
+    paid_sum_map = get_paid_sum_map(user["user_id"])
+    for r in rows:
+        r["paid_sum"] = paid_sum_map.get(r["id"], 0)
+
+    today_total = get_today_total_for_user(user["user_id"])
+    today_expense_total = get_today_expense_total_for_user(user["user_id"])
+    today_net = int(today_total) - int(today_expense_total)
+
+    month_net = int(get_month_net_like_history(user["user_id"], year=y, month=m))
+    total_face_value = sum(
+        int((r.get("face_value") or 0))
+        for r in rows
+        if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
+    )
+    total_face_value_left = sum(
+        int((r.get("face_value") or 0)) - int((r.get("paid_sum") or 0)) - int((r.get("ticket_offset") or 0))
+        for r in rows
+        if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
+    )
+
+    today_due = len([r for r in rows if r.get("is_due_today")])
+    overdue = len([r for r in rows if r.get("is_overdue")])
+    tomorrow_due = len([r for r in rows if (r.get("days_left") == 1) and (not r.get("finished"))])
+
+    token = _get_line_notify_token(user["user_id"])
+
+    return templates.TemplateResponse(
+        "tools.html",
+        {
+            "request": request,
+            "user": user,
+            "tools_mode": mode,
+            "tools_until": (until.isoformat() if until else ""),
+            "ym": show_ym,
+            "token": token,
+            "today_total": today_total,
+            "today_expense_total": today_expense_total,
+            "today_net": today_net,
+            "month_net": month_net,
+            "total_face_value": total_face_value,
+            "total_face_value_left": total_face_value_left,
+            "today_due": today_due,
+            "tomorrow_due": tomorrow_due,
+            "overdue": overdue,
+        },
+    )
+
+@app.post("/tools/save-token")
+def tools_save_token(request: Request, token: str = Form("")):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    ok, mode, until, msg = get_tools_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+
+    token = (token or "").strip()
+    _set_line_notify_token(user["user_id"], token)
+    return RedirectResponse("/tools?msg=" + quote("已儲存 LINE Token"), status_code=303)
+
+@app.post("/tools/send-line")
+def tools_send_line(
+    request: Request,
+    ym: str = Form(""),
+    # 回報項目（checkbox）
+    r_today_total: str | None = Form(None),
+    r_today_expense: str | None = Form(None),
+    r_today_net: str | None = Form(None),
+    r_month_net: str | None = Form(None),
+    r_face_total: str | None = Form(None),
+    r_face_left: str | None = Form(None),
+    r_due: str | None = Form(None),
+    note: str = Form(""),
+):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    ok, mode, until, msg = get_tools_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+
+    token = _get_line_notify_token(user["user_id"]).strip()
+    if not token:
+        return RedirectResponse("/tools?msg=" + quote("請先在此頁儲存 LINE Token"), status_code=303)
+
+    y, m = _get_month_range(ym)
+    show_ym = f"{y:04d}-{m:02d}"
+
+    # 取統計（跟首頁一致）
+    rows_raw = get_all_records_for_user(user["user_id"])
+    rows = [row_to_view(r) for r in rows_raw]
+    paid_sum_map = get_paid_sum_map(user["user_id"])
+    for rr in rows:
+        rr["paid_sum"] = paid_sum_map.get(rr["id"], 0)
+
+    today_total = get_today_total_for_user(user["user_id"])
+    today_expense_total = get_today_expense_total_for_user(user["user_id"])
+    today_net = int(today_total) - int(today_expense_total)
+
+    month_net = int(get_month_net_like_history(user["user_id"], year=y, month=m))
+    total_face_value = sum(
+        int((rr.get("face_value") or 0))
+        for rr in rows
+        if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
+    )
+    total_face_value_left = sum(
+        int((rr.get("face_value") or 0)) - int((rr.get("paid_sum") or 0)) - int((rr.get("ticket_offset") or 0))
+        for rr in rows
+        if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
+    )
+
+    today_due = len([rr for rr in rows if rr.get("is_due_today")])
+    overdue = len([rr for rr in rows if rr.get("is_overdue")])
+    tomorrow_due = len([rr for rr in rows if (rr.get("days_left") == 1) and (not rr.get("finished"))])
+
+    parts = []
+    parts.append(f"📌 分期借款管理平台 回報（{user.get('display_name') or user.get('username')}）")
+    parts.append(f"📅 月份：{show_ym}")
+    parts.append(f"🗓️ 日期：{today_str()}")
+
+    if r_today_total:
+        parts.append(f"💰 今日實收：{int(today_total)}")
+    if r_today_expense:
+        parts.append(f"💸 今日開銷：{int(today_expense_total)}")
+    if r_today_net:
+        parts.append(f"✅ 今日淨利：{int(today_net)}")
+    if r_month_net:
+        parts.append(f"📈 月淨利：{int(month_net)}")
+    if r_face_total:
+        parts.append(f"🎟️ 總票面：{int(total_face_value)}")
+    if r_face_left:
+        parts.append(f"🎟️ 總票面(餘)：{int(total_face_value_left)}")
+    if r_due:
+        parts.append(f"🔔 今日到期：{today_due}｜明日到期：{tomorrow_due}｜逾期：{overdue}")
+
+    note = (note or "").strip()
+    if note:
+        parts.append(f"📝 備註：{note}")
+
+    message = "\n".join(parts)
+
+    try:
+        resp = requests.post(
+            "https://notify-api.line.me/api/notify",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"message": message},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return RedirectResponse(
+                "/tools?msg=" + quote(f"LINE 回報失敗（{resp.status_code}）"),
+                status_code=303,
+            )
+    except Exception:
+        return RedirectResponse("/tools?msg=" + quote("LINE 回報失敗（連線錯誤）"), status_code=303)
+
+    return RedirectResponse("/tools?msg=" + quote("已送出 LINE 回報"), status_code=303)
+
+@app.post("/tools/export-excel")
+def tools_export_excel(
+    request: Request,
+    ym: str = Form(""),
+    # 匯出內容（checkbox）
+    ex_summary: str | None = Form(None),
+    ex_records: str | None = Form(None),
+    ex_payments: str | None = Form(None),
+    ex_expenses: str | None = Form(None),
+):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    ok, mode, until, msg = get_tools_access_status(user["user_id"])
+    if not ok:
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+
+    y, m = _get_month_range(ym)
+    show_ym = f"{y:04d}-{m:02d}"
+
+    wb = Workbook()
+    # remove default sheet
+    wb.remove(wb.active)
+
+    # Summary sheet
+    if ex_summary:
+        rows_raw = get_all_records_for_user(user["user_id"])
+        rows = [row_to_view(r) for r in rows_raw]
+        paid_sum_map = get_paid_sum_map(user["user_id"])
+        for rr in rows:
+            rr["paid_sum"] = paid_sum_map.get(rr["id"], 0)
+
+        today_total = get_today_total_for_user(user["user_id"])
+        today_expense_total = get_today_expense_total_for_user(user["user_id"])
+        today_net = int(today_total) - int(today_expense_total)
+        month_net = int(get_month_net_like_history(user["user_id"], year=y, month=m))
+        total_face_value = sum(
+            int((rr.get("face_value") or 0))
+            for rr in rows
+            if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
+        )
+        total_face_value_left = sum(
+            int((rr.get("face_value") or 0)) - int((rr.get("paid_sum") or 0)) - int((rr.get("ticket_offset") or 0))
+            for rr in rows
+            if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
+        )
+
+        today_due = len([rr for rr in rows if rr.get("is_due_today")])
+        overdue = len([rr for rr in rows if rr.get("is_overdue")])
+        tomorrow_due = len([rr for rr in rows if (rr.get("days_left") == 1) and (not rr.get("finished"))])
+
+        ws = wb.create_sheet("總覽")
+        ws.append(["項目", "數值"])
+        ws.append(["月份", show_ym])
+        ws.append(["今日日期", today_str()])
+        ws.append(["今日實收", int(today_total)])
+        ws.append(["今日開銷", int(today_expense_total)])
+        ws.append(["今日淨利", int(today_net)])
+        ws.append(["月淨利", int(month_net)])
+        ws.append(["總票面", int(total_face_value)])
+        ws.append(["總票面(餘)", int(total_face_value_left)])
+        ws.append(["今日到期", int(today_due)])
+        ws.append(["明日到期", int(tomorrow_due)])
+        ws.append(["逾期", int(overdue)])
+        _style_sheet_as_table(ws, "SummaryTable")
+
+    # Records sheet
+    if ex_records:
+        rows_raw = get_all_records_for_user(user["user_id"])
+        rows = [row_to_view(r) for r in rows_raw]
+        paid_sum_map = get_paid_sum_map(user["user_id"])
+        for rr in rows:
+            rr["paid_sum"] = paid_sum_map.get(rr["id"], 0)
+
+        ws = wb.create_sheet("目前資料")
+        headers = ["名稱", "建立日", "每期", "期數", "已繳期數", "票面", "票面(餘)", "支出", "支出(餘)", "週期(天)", "狀態"]
+        ws.append(headers)
+        for rr in rows:
+            paid_sum = int(rr.get("paid_sum") or 0)
+            face_value = int(rr.get("face_value") or 0)
+            ticket_offset = int(rr.get("ticket_offset") or 0)
+            expense_offset = int(rr.get("expense_offset") or 0)
+            face_left = face_value - ticket_offset - paid_sum
+            spend_left = int(rr.get("total_amount") or 0) - paid_sum - expense_offset
+            status = "已結清" if rr.get("finished") else ("逾期" if rr.get("is_overdue") else ("今日到期" if rr.get("is_due_today") else "進行中"))
+            ws.append([
+                rr.get("name",""),
+                rr.get("created_date",""),
+                int(rr.get("amount") or 0),
+                int(rr.get("periods") or 0),
+                int(rr.get("paid_count") or 0),
+                face_value,
+                int(face_left),
+                int(rr.get("total_amount") or 0),
+                int(spend_left),
+                int(rr.get("interval_days") or 0),
+                status,
+            ])
+        _style_sheet_as_table(ws, "RecordsTable")
+
+    # Payments sheet
+    if ex_payments:
+        items = _get_payments_in_month(user["user_id"], y, m)
+        ws = wb.create_sheet("繳款明細")
+        ws.append(["日期", "名稱", "金額", "本月第幾期"])
+        for it in items:
+            ws.append([it["date"], it["name"], it["amount"], it["period_no"]])
+        _style_sheet_as_table(ws, "PaymentsTable")
+
+    # Expenses sheet
+    if ex_expenses:
+        items = _get_expenses_in_month(user["user_id"], y, m)
+        ws = wb.create_sheet("開銷明細")
+        ws.append(["日期", "項目", "金額"])
+        for it in items:
+            ws.append([it["date"], it["item"], it["amount"]])
+        _style_sheet_as_table(ws, "ExpensesTable")
+
+    # 沒有勾選任何匯出項目：至少給總覽
+    if len(wb.worksheets) == 0:
+        ws = wb.create_sheet("總覽")
+        ws.append(["提示"])
+        ws.append(["未勾選任何匯出項目"])
+        _style_sheet_as_table(ws, "EmptyTable")
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    filename = f"分期借款_{user.get('username')}_{show_ym}.xlsx"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    }
+    return StreamingResponse(
+        bio,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
 @app.post("/admin/links/add")
 def admin_links_add(
     request: Request,
@@ -2177,7 +2413,8 @@ def admin_users(request: Request):
     SELECT id, username, display_name,
            activated_at, last_seen_at,
            group_activated_at,
-           group_trial_started_at
+           group_trial_started_at,
+           tools_activated_at
     FROM users
     ORDER BY id DESC
 """
@@ -2196,6 +2433,7 @@ def admin_users(request: Request):
                     "last_seen_at": r["last_seen_at"],
                     "group_activated_at": r["group_activated_at"],
                     "group_trial_started_at": r["group_trial_started_at"],
+                    "tools_activated_at": r["tools_activated_at"],
                 }
             )
 
@@ -2209,6 +2447,7 @@ def admin_users(request: Request):
                     "last_seen_at": r[4],
                     "group_activated_at": r[5],
                     "group_trial_started_at": r[6],
+                    "tools_activated_at": r[7],
                 }
             )
 
@@ -2230,7 +2469,12 @@ def admin_users_activate(
     if not admin:
         return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
 
-    # 清除開通時間：下方會將 activated_at 設為 NULL
+    msg = request.query_params.get("msg", "")
+
+    # 清除開通時間
+    if clear == "1":
+        activated_at = ""
+
     from datetime import date, timedelta
 
     days = (days or "").strip()
@@ -2257,50 +2501,8 @@ def admin_users_activate(
     return RedirectResponse("/admin/users", status_code=303)
 
 
-
-@app.post("/admin/users/activate-clear-multiple")
-def admin_users_activate_clear_multiple(
-    request: Request,
-    user_ids: list[str] = Form([]),
-):
-    init_db()
-    admin = require_admin(request)
-    if not admin:
-        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
-
-    # 轉成 int，避免亂值
-    ids: list[int] = []
-    for x in user_ids or []:
-        try:
-            ids.append(int(x))
-        except Exception:
-            pass
-
-    if not ids:
-        return RedirectResponse(
-            "/admin/users?msg=" + quote("請先勾選要清除的已開通帳號"),
-            status_code=303,
-        )
-
-    placeholders = ",".join([PH] * len(ids))
-    params = [None, *ids]  # activated_at 設為 NULL
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"UPDATE users SET activated_at = {PH} WHERE id IN ({placeholders})",
-                params,
-            )
-        conn.commit()
-
-    return RedirectResponse(
-        "/admin/users?msg=" + quote(f"已清除 {len(ids)} 筆帳號的開通時間"),
-        status_code=303,
-    )
-
-
 @app.post("/admin/users/group-activate")
-def admin_users_group_activate_dash(
+def admin_users_group_activate(
     request: Request,
     user_id: int = Form(...),
     days: str = Form(""),
@@ -2335,9 +2537,45 @@ def admin_users_group_activate_dash(
             )
         conn.commit()
 
+    return RedirectResponse("/admin/users?msg=" + quote("已設定連結帳號功能"), status_code=303)
+
+@app.post("/admin/users/tools-activate")
+def admin_users_tools_activate(
+    request: Request,
+    user_id: int = Form(...),
+    days: str = Form(""),
+    clear: str | None = Form(None),
+):
+    init_db()
+    admin = require_admin(request)
+    if not admin:
+        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
+
+    days = (days or "").strip()
+
+    if clear == "1":
+        value = None
+    else:
+        if not days:
+            value = None
+        else:
+            d = int(days)
+            until = date.today() + timedelta(days=d)
+            value = until.isoformat()
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"UPDATE users SET tools_activated_at = {PH} WHERE id = {PH}",
+                (value, user_id),
+            )
+        conn.commit()
+
     return RedirectResponse(
-        "/admin/users?msg=" + quote("已設定連結帳號功能"), status_code=303
+        "/admin/users?msg=" + quote("已設定 LINE/Excel 功能"), status_code=303
     )
+
+
 
 
 @app.post("/admin/users/create")
@@ -2462,7 +2700,7 @@ def delete_payment(request: Request, payment_id: int = Form(...)):
 
 
 @app.post("/admin/users/group_activate")
-def admin_users_group_activate_underscore(
+def admin_users_group_activate(
     request: Request,
     user_id: int = Form(...),
     days: str = Form(""),
@@ -2980,3 +3218,45 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
+def get_tools_access_status(user_id: int):
+    """
+    LINE 回報 + Excel 匯出（加購功能，**不提供試用**）
+
+    回傳 (ok, mode, until, msg)
+    mode: "activated" | "expired"
+      - activated: tools_activated_at >= today
+      - expired:   未開通或已到期
+    """
+    init_db()
+    today = date.fromisoformat(today_str())
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT tools_activated_at FROM users WHERE id = {PH}",
+                (user_id,),
+            )
+            row = cur.fetchone()
+
+    tools_until = None
+    if row:
+        if isinstance(row, sqlite3.Row):
+            tools_until = row["tools_activated_at"]
+        else:
+            tools_until = row[0]
+
+    if tools_until:
+        try:
+            until_date = date.fromisoformat(str(tools_until))
+        except Exception:
+            until_date = None
+
+        if until_date and until_date >= today:
+            return True, "activated", until_date, ""
+
+        if until_date:
+            return False, "expired", until_date, "LINE/Excel 功能已到期，請到後台重新開通。"
+
+    return False, "expired", None, "LINE/Excel 功能尚未開通，請到後台開通。"
+
