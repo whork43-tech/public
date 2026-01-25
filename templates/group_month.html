@@ -149,27 +149,16 @@
               <div class="mini">帳號：{{ u.username }}</div>
             </div>
 
-            {% set tnet = u.today_net|default(0) %}
-            <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-              <div class="tag" style="{% if net < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
-                🗓️ 月淨利：<b>{{ net }}</b>
-              </div>
-              <div class="tag">🎟️ 總票面：<b>{{ u.face_total|default(0) }}</b></div>
-              <div class="tag">💰 今日實收：<b>{{ u.today_total|default(0) }}</b></div>
-              <div class="tag" style="{% if tnet < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
-                📌 今日淨利：<b>{{ tnet }}</b>
-              </div>
+            <div class="tag" style="{% if net < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
+              🗓️ 月淨利：<b>{{ net }}</b>
             </div>
           </div>
         </div>
         {% endfor %}
       </div>
 
-      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
-        <div class="tag">📊 連結帳號月淨利合計：<b>{{ group_summary.month_total }}</b></div>
-        <div class="tag">💰 今日實收合計：<b>{{ group_summary.today_total|default(0) }}</b></div>
-        <div class="tag">📌 今日淨利合計：<b>{{ group_summary.today_net_total|default(0) }}</b></div>
-        <div class="tag">🎟️ 總票面合計：<b>{{ group_summary.face_total|default(0) }}</b></div>
+      <div class="tag" style="margin-top:8px;">
+        📊 連結帳號合計：<b>{{ group_summary.month_total }}</b>
       </div>
       {% else %}
       <div class="mini" style="margin-top:10px;">尚未連結任何帳號（或本月沒有資料）</div>
