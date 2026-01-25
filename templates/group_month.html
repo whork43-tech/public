@@ -155,12 +155,12 @@
               <div class="tag" style="{% if net < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
                 🗓️ 月淨利：<b>{{ net }}</b>
               </div>
-              <div class="tag">💰 今日實收：<b>{{ u.today_total }}</b></div>
-              <div class="tag">💸 今日開銷：<b>{{ u.today_expense }}</b></div>
+              <div class="tag">💰 今日實收：<b>{{ u.today_total|default(0) }}</b></div>
+              <div class="tag">💸 今日開銷：<b>{{ u.today_expense|default(0) }}</b></div>
               <div class="tag" style="{% if tnet < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
                 ✅ 今日淨利：<b>{{ tnet }}</b>
               </div>
-              <div class="tag">🎟️ 總票面：<b>{{ u.face_total }}</b></div>
+              <div class="tag">🎟️ 總票面：<b>{{ u.face_total|default(0) }}</b></div>
             </div>
           </div>
         </div>
@@ -173,8 +173,8 @@
         <div style="display:flex; flex-wrap:wrap; gap:10px;">
           <div class="tag">🗓️ 月淨利合計：<b>{{ group_summary.month_total }}</b></div>
           <div class="tag">💰 今日實收合計：<b>{{ group_summary.today_total }}</b></div>
-          <div class="tag">💸 今日開銷合計：<b>{{ group_summary.today_expense_total }}</b></div>
-          <div class="tag">✅ 今日淨利合計：<b>{{ group_summary.today_net_total }}</b></div>
+          <div class="tag">💸 今日開銷合計：<b>{{ group_summary.today_expense_total|default(0) }}</b></div>
+          <div class="tag">✅ 今日淨利合計：<b>{{ group_summary.today_net_total|default(0) }}</b></div>
           <div class="tag">🎟️ 總票面合計：<b>{{ group_summary.face_total }}</b></div>
         </div>
       </div>
