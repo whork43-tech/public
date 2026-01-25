@@ -854,6 +854,85 @@ def get_month_net_for_user(
     return int(income) - int(expense)
 
 
+def get_month_net_like_history(
+    user_id: int, year: int | None = None, month: int | None = None
+) -> int:
+    """
+    ✅ 讓「首頁本月淨利」與「歷史繳款」頁面的「月淨利」完全一致的算法。
+
+    規則（沿用你歷史頁的統計邏輯）：
+    - 月收入：該月 payments 的總和
+    - 月開銷：只扣「該月有繳款的日期」的 expenses（也就是：有繳款日才算入開銷）
+    """
+    today = date.fromisoformat(today_str())
+    y = int(year or today.year)
+    m = int(month or today.month)
+    month_start, month_end = _month_start_end(y, m)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 該月實收
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE user_id = {PH}
+                  AND paid_at >= {PH}
+                  AND paid_at < {PH}
+                """,
+                (user_id, month_start, month_end),
+            )
+            income_row = cur.fetchone()
+            income = (
+                (income_row[0] if not isinstance(income_row, sqlite3.Row) else income_row[0])
+                if income_row
+                else 0
+            )
+
+            # 該月有繳款的日期（用於扣開銷）
+            cur.execute(
+                f"""
+                SELECT DISTINCT paid_at
+                FROM payments
+                WHERE user_id = {PH}
+                  AND paid_at >= {PH}
+                  AND paid_at < {PH}
+                """,
+                (user_id, month_start, month_end),
+            )
+            date_rows = cur.fetchall()
+
+    pay_dates: list[str] = []
+    for r in date_rows:
+        d = r[0] if not isinstance(r, sqlite3.Row) else r[0]
+        if d:
+            pay_dates.append(d if isinstance(d, str) else d.isoformat())
+
+    # 該月沒有任何繳款日 -> 依歷史頁規則：不扣任何開銷
+    if not pay_dates:
+        return int(income or 0)
+
+    placeholders = ",".join([PH] * len(pay_dates))
+    params = [user_id, *pay_dates]
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM expenses
+                WHERE user_id = {PH}
+                  AND spent_at IN ({placeholders})
+                """,
+                params,
+            )
+            exp_row = cur.fetchone()
+
+    expense = exp_row[0] if exp_row else 0
+    return int(income or 0) - int(expense or 0)
+
+
+
 # ======================
 # Business logic
 # ======================
@@ -1299,7 +1378,7 @@ def home(request: Request):
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
-    my_month_net = get_month_net_for_user(user["user_id"])
+    my_month_net = int(get_month_net_like_history(user["user_id"]))
 
     # ✅ 今日淨收
     today_net = int(today_total) - int(today_expense_total)
@@ -1724,6 +1803,14 @@ def group_month(request: Request):
     if not user or isinstance(user, RedirectResponse):
         return user
 
+
+    # 子帳號不可使用（也避免誤觸發試用/開通狀態）
+    if is_child_user(user["user_id"]):
+        return RedirectResponse(
+            url="/?paid_msg=" + quote("子帳號不可使用連結帳號功能"),
+            status_code=303,
+        )
+
     # 只有主帳號能使用（子帳號不給操作）
     group_is_child = is_child_user(user["user_id"])
     master_ok = not group_is_child
@@ -1732,6 +1819,14 @@ def group_month(request: Request):
     group_access_ok, group_access_mode, group_access_until, msg0 = (
         get_group_access_status(user["user_id"])
     )
+
+    # 功能未開通/已到期：直接回首頁（避免進入頁面才看到錯誤）
+    if not group_access_ok:
+        return RedirectResponse(
+            url="/?paid_msg=" + quote(msg0 or "連結帳號功能未開通/已到期"),
+            status_code=303,
+        )
+
 
     # msg：優先顯示 query 的 msg（例如新增/解除完成），否則顯示狀態訊息
     msg = (request.query_params.get("msg") or "").strip() or (msg0 or "")
