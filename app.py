@@ -1117,6 +1117,39 @@ def get_expense_map_for_user(user_id: int):
     return mp
 
 
+
+
+def get_month_net_like_history(user_id: int, year: int, month: int) -> int:
+    """計算「歷史繳款」頁面同樣口徑的月淨利：當月總收 - 當月總開銷。"""
+    ym = f"{year:04d}-{month:02d}"
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 當月總收（payments）
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0) AS s
+                FROM payments
+                WHERE user_id = {PH} AND substr(paid_at, 1, 7) = {PH}
+                """,
+                (user_id, ym),
+            )
+            pay_sum = cur.fetchone()
+            pay_sum = int(pay_sum["s"] if isinstance(pay_sum, sqlite3.Row) else pay_sum[0] or 0)
+
+            # 當月總開銷（expenses）
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0) AS s
+                FROM expenses
+                WHERE user_id = {PH} AND substr(spent_at, 1, 7) = {PH}
+                """,
+                (user_id, ym),
+            )
+            exp_sum = cur.fetchone()
+            exp_sum = int(exp_sum["s"] if isinstance(exp_sum, sqlite3.Row) else exp_sum[0] or 0)
+
+    return pay_sum - exp_sum
+
 def get_history_grouped(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
@@ -1867,7 +1900,7 @@ def _set_line_notify_token(user_id: int, token: str) -> None:
         conn.commit()
 
 def _get_telegram_chat_id(user_id: int) -> str:
-    with db_conn() as conn:
+    with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
             f"SELECT telegram_chat_id FROM users WHERE id = {PH}",
@@ -1883,7 +1916,7 @@ def _get_telegram_chat_id(user_id: int) -> str:
 
 
 def _set_telegram_chat_id(user_id: int, chat_id: str) -> None:
-    with db_conn() as conn:
+    with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
             f"UPDATE users SET telegram_chat_id = {PH} WHERE id = {PH}",
@@ -2085,115 +2118,44 @@ def tools_page(request: Request):
         },
     )
 
+
 @app.post("/tools/save-telegram")
 def tools_save_telegram(request: Request, bot_token: str = Form(""), chat_id: str = Form("")):
     init_db()
     user = require_active(request)
-    if not user or isinstance(user, RedirectResponse):
+    if not user:
+        return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
         return user
 
     ok, mode, until, msg = get_tools_access_status(user["user_id"])
     if not ok:
         return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
 
-    bot_token = _get_line_notify_token(user["user_id"])
-    chat_id = _get_telegram_chat_id(user["user_id"]).strip()
-    if not token:
-        return RedirectResponse("/tools?msg=" + quote("請先在此頁儲存 Telegram Bot Token / chat_id"), status_code=303)
+    bot_token = (bot_token or "").strip()
+    chat_id = (chat_id or "").strip()
 
-    y, m = _get_month_range(ym)
-    show_ym = f"{y:04d}-{m:02d}"
+    if not bot_token or not chat_id:
+        return RedirectResponse("/tools?msg=" + quote("請輸入 Telegram Bot Token 與 chat_id"), status_code=303)
 
-    # 取統計（跟首頁一致）
-    rows_raw = get_all_records_for_user(user["user_id"])
-    rows = [row_to_view(r) for r in rows_raw]
-    paid_sum_map = get_paid_sum_map(user["user_id"])
-    for rr in rows:
-        rr["paid_sum"] = paid_sum_map.get(rr["id"], 0)
+    # 兼容：沿用原 line_notify_token 欄位存 Bot Token
+    _set_line_notify_token(user["user_id"], bot_token)
+    _set_telegram_chat_id(user["user_id"], chat_id)
 
-    today_total = get_today_total_for_user(user["user_id"])
-    today_expense_total = get_today_expense_total_for_user(user["user_id"])
-    today_net = int(today_total) - int(today_expense_total)
+    return RedirectResponse("/tools?msg=" + quote("已儲存 Telegram Bot Token / chat_id"), status_code=303)
 
-    month_net = int(get_month_net_like_history(user["user_id"], year=y, month=m))
-    total_face_value = sum(
-        int((rr.get("face_value") or 0))
-        for rr in rows
-        if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
-    )
-    total_face_value_left = sum(
-        int((rr.get("face_value") or 0)) - int((rr.get("paid_sum") or 0)) - int((rr.get("ticket_offset") or 0))
-        for rr in rows
-        if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
-    )
-
-    today_due = len([rr for rr in rows if rr.get("is_due_today")])
-    overdue = len([rr for rr in rows if rr.get("is_overdue")])
-    tomorrow_due = len([rr for rr in rows if (rr.get("days_left") == 1) and (not rr.get("finished"))])
-
-    parts = []
-    parts.append(f"📌 分期借款管理平台 回報（{user.get('display_name') or user.get('username')}）")
-    parts.append(f"📅 月份：{show_ym}")
-    parts.append(f"🗓️ 日期：{today_str()}")
-
-    if r_today_total:
-        parts.append(f"💰 今日實收：{int(today_total)}")
-    if r_today_expense:
-        parts.append(f"💸 今日開銷：{int(today_expense_total)}")
-    if r_today_net:
-        parts.append(f"✅ 今日淨利：{int(today_net)}")
-    if r_month_net:
-        parts.append(f"📈 月淨利：{int(month_net)}")
-    if r_face_total:
-        parts.append(f"🎟️ 總票面：{int(total_face_value)}")
-    if r_face_left:
-        parts.append(f"🎟️ 總票面(餘)：{int(total_face_value_left)}")
-    if r_due:
-        parts.append(f"🔔 今日到期：{today_due}｜明日到期：{tomorrow_due}｜逾期：{overdue}")
-
-    note = (note or "").strip()
-    if note:
-        parts.append(f"📝 備註：{note}")
-
-    message = "\n".join(parts)
-
-    try:
-        # 使用標準庫送出 LINE Notify（避免額外依賴）
-        data = urllib.parse.urlencode({"message": message}).encode("utf-8")
-        req = urllib.request.Request(
-            "https://notify-api.line.me/api/notify",
-            data=data,
-            headers={"Authorization": f"Bearer {token}"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                status = getattr(r, "status", 200)
-                body = r.read().decode("utf-8", errors="ignore")
-        except Exception as e:
-            raise RuntimeError(f"LINE Notify 發送失敗：{e}") from e
-
-        if status != 200:
-
-            return RedirectResponse(
-                "/tools?msg=" + quote(f"LINE 回報失敗（{status}）"),
-                status_code=303,
-            )
-    except Exception:
-        return RedirectResponse("/tools?msg=" + quote("LINE 回報失敗（連線錯誤）"), status_code=303)
-
-    return RedirectResponse("/tools?msg=" + quote("已送出 LINE 回報"), status_code=303)
 @app.post("/tools/save-token")
 def tools_save_token_compat(request: Request, token: str = Form("")):
     # 相容舊版：把 token 當作 Telegram Bot Token 儲存
-    user = current_user(request)
+    user = require_active(request)
     if not user:
         return RedirectResponse("/", status_code=303)
     ok, mode, until, msg = get_tools_access_status(user["user_id"])
     if not ok:
-        return RedirectResponse("/?msg=" + quote(msg), status_code=303)
+        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
     _set_line_notify_token(user["user_id"], token)
     return RedirectResponse("/tools?msg=" + quote("已儲存 Telegram Bot Token"), status_code=303)
+
 
 
 
@@ -2215,17 +2177,19 @@ def tools_send_telegram(
 ):
     init_db()
     user = require_active(request)
-    if not user or isinstance(user, RedirectResponse):
+    if not user:
+        return RedirectResponse(url="/?paid_msg=" + quote("請先登入"), status_code=303)
+    if isinstance(user, RedirectResponse):
         return user
 
     ok, mode, until, msg = get_tools_access_status(user["user_id"])
     if not ok:
         return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
 
-    bot_token = _get_line_notify_token(user["user_id"]).strip()
-    chat_id = _get_telegram_chat_id(user["user_id"]).strip()
+    bot_token = (_get_line_notify_token(user["user_id"]) or "").strip()
+    chat_id = (_get_telegram_chat_id(user["user_id"]) or "").strip()
     if not bot_token or not chat_id:
-        return RedirectResponse("/tools?msg=" + quote("請先在此頁儲存 Telegram Bot Token 與 chat_id"), status_code=303)
+        return RedirectResponse("/tools?msg=" + quote("請先儲存 Telegram Bot Token / chat_id"), status_code=303)
 
     y, m = _get_month_range(ym)
     show_ym = f"{y:04d}-{m:02d}"
@@ -2237,18 +2201,21 @@ def tools_send_telegram(
     for rr in rows:
         rr["paid_sum"] = paid_sum_map.get(rr["id"], 0)
 
-    today_total = get_today_total_for_user(user["user_id"])
-    today_expense_total = get_today_expense_total_for_user(user["user_id"])
-    today_net = int(today_total) - int(today_expense_total)
+    today_total = int(get_today_total_for_user(user["user_id"]) or 0)
+    today_expense_total = int(get_today_expense_total_for_user(user["user_id"]) or 0)
+    today_net = today_total - today_expense_total
 
-    month_net = int(get_month_net_like_history(user["user_id"], year=y, month=m))
+    month_net = int(get_month_net_like_history(user["user_id"], year=y, month=m) or 0)
+
     total_face_value = sum(
         int((rr.get("face_value") or 0))
         for rr in rows
         if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
     )
     total_face_value_left = sum(
-        int((rr.get("face_value") or 0)) - int((rr.get("paid_sum") or 0)) - int((rr.get("ticket_offset") or 0))
+        int((rr.get("face_value") or 0))
+        - int((rr.get("paid_sum") or 0))
+        - int((rr.get("ticket_offset") or 0))
         for rr in rows
         if int(rr.get("paid_count", 0)) < int(rr.get("periods", 0))
     )
@@ -2257,57 +2224,56 @@ def tools_send_telegram(
     overdue = len([rr for rr in rows if rr.get("is_overdue")])
     tomorrow_due = len([rr for rr in rows if (rr.get("days_left") == 1) and (not rr.get("finished"))])
 
-    parts = []
+    parts: list[str] = []
     parts.append(f"📌 分期借款管理平台 回報（{user.get('display_name') or user.get('username')}）")
     parts.append(f"📅 月份：{show_ym}")
     parts.append(f"🗓️ 日期：{today_str()}")
 
     if r_today_total:
-        parts.append(f"💰 今日實收：{int(today_total)}")
+        parts.append(f"💰 今日實收：{today_total}")
     if r_today_expense:
-        parts.append(f"💸 今日開銷：{int(today_expense_total)}")
+        parts.append(f"🧾 當日開銷：{today_expense_total}")
     if r_today_net:
-        parts.append(f"✅ 今日淨利：{int(today_net)}")
+        parts.append(f"✅ 今日淨利：{today_net}")
     if r_month_net:
-        parts.append(f"📈 月淨利：{int(month_net)}")
+        parts.append(f"📈 月淨利：{month_net}")
     if r_face_total:
-        parts.append(f"🎟️ 總票面：{int(total_face_value)}")
+        parts.append(f"💳 總票面：{total_face_value}")
     if r_face_left:
-        parts.append(f"🎟️ 總票面(餘)：{int(total_face_value_left)}")
+        parts.append(f"💳 總票面(餘)：{total_face_value_left}")
     if r_due:
-        parts.append(f"🔔 今日到期：{today_due}｜明日到期：{tomorrow_due}｜逾期：{overdue}")
+        parts.append(f"⏳ 今日到期：{today_due}｜明日到期：{tomorrow_due}｜逾期：{overdue}")
 
     note = (note or "").strip()
     if note:
         parts.append(f"📝 備註：{note}")
 
-    message = "
-".join(parts)
-
-    try:
+    message = "\n".join(parts)
     # 使用標準庫送出 Telegram 訊息（避免額外依賴）
-    import json
-    import urllib.request
-
-    api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = json.dumps({"chat_id": chat_id, "text": message}).encode("utf-8")
-    req = urllib.request.Request(
-        api_url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            status = resp.getcode()
-            _ = resp.read()
+        import json
+        import urllib.request
+
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        data = {"chat_id": chat_id, "text": message}
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            if resp.status != 200:
+                return RedirectResponse("/tools?msg=" + quote("Telegram 回報失敗"), status_code=303)
+            if '"ok":true' not in body.replace(" ", "").lower():
+                return RedirectResponse("/tools?msg=" + quote("Telegram 回報失敗"), status_code=303)
     except Exception:
         return RedirectResponse("/tools?msg=" + quote("Telegram 回報失敗（連線錯誤）"), status_code=303)
 
-    if status != 200:
-        return RedirectResponse("/tools?msg=" + quote(f"Telegram 回報失敗（{status}）"), status_code=303)
-
     return RedirectResponse("/tools?msg=" + quote("已送出 Telegram 回報"), status_code=303)
+
+
 
 @app.post("/tools/export-excel")
 def tools_export_excel(
