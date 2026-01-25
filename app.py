@@ -471,13 +471,12 @@ def _parse_iso_date(s: str | None):
 
 def get_group_access_status(user_id: int):
     """
-    連結功能狀態：
-    - 第一次使用：自動啟動 7 天試用（寫入 group_trial_started_at）
-    - 試用中：OK
-    - 付費中：OK（group_activated_at >= today）
-    - 到期：不給用
+    連結帳號功能（付費功能，**不提供試用**）
+
     回傳 (ok, mode, until, msg)
-    mode: "activated" | "trial" | "expired"
+    mode: "activated" | "expired"
+      - activated: group_activated_at >= today
+      - expired:   未開通或已到期
     """
     init_db()
     today = date.fromisoformat(today_str())
@@ -485,60 +484,33 @@ def get_group_access_status(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
-                f"SELECT group_activated_at, group_trial_started_at FROM users WHERE id = {PH}",
+                "SELECT group_activated_at FROM users WHERE id = ?",
                 (user_id,),
             )
             row = cur.fetchone()
 
-    if not row:
-        return (False, "expired", None, "帳號不存在")
+    group_until = None
+    if row:
+        if isinstance(row, sqlite3.Row):
+            group_until = row["group_activated_at"]
+        else:
+            group_until = row[0]
 
-    if isinstance(row, sqlite3.Row):
-        activated_s = row["group_activated_at"]
-        trial_s = row["group_trial_started_at"]
-    else:
-        activated_s = row[0]
-        trial_s = row[1]
+    if group_until:
+        try:
+            until_date = date.fromisoformat(str(group_until))
+        except Exception:
+            until_date = None
 
-    activated = _parse_iso_date(activated_s)
-    trial_start = _parse_iso_date(trial_s)
+        if until_date and until_date >= today:
+            return True, "activated", until_date.isoformat(), ""
 
-    # 1) 已付費開通
-    if activated and today <= activated:
-        return (True, "activated", activated, "")
+        # 有值但已過期
+        if until_date:
+            return False, "expired", until_date.isoformat(), "連結帳號功能已到期，請到後台重新開通。"
 
-    # 1b) 已曾付費開通但已到期：不要重新啟動試用（避免到期後又能用）
-    if activated and today > activated:
-        return (
-            False,
-            "expired",
-            None,
-            "連結功能已到期，請聯絡 LINE：@826ynmlh 開通",
-        )
-
-    # 2) 試用已開始
-    if trial_start:
-        trial_until = trial_start + timedelta(days=7)
-        if today <= trial_until:
-            return (True, "trial", trial_until, "")
-        return (
-            False,
-            "expired",
-            None,
-            "連結功能試用已到期，請聯絡 LINE：@826ynmlh 開通",
-        )
-
-    # 3) 第一次使用：啟動試用
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"UPDATE users SET group_trial_started_at = {PH} WHERE id = {PH}",
-                (today.isoformat(), user_id),
-            )
-        conn.commit()
-
-    return (True, "trial", today + timedelta(days=7), "")
-
+    # 尚未開通
+    return False, "expired", "", "連結帳號功能尚未開通，請到後台開通。"
 
 def get_access_status(user_id: int):
     """
@@ -755,6 +727,7 @@ def compute_group_summary(
     per_user: list[dict] = []
     month_total = 0
     today_total_sum = 0
+    today_expense_sum = 0
     today_net_sum = 0
     face_total_sum = 0
 
@@ -773,6 +746,7 @@ def compute_group_summary(
 
         month_total += month_net
         today_total_sum += t_total
+        today_expense_sum += t_exp
         today_net_sum += t_net
         face_total_sum += face_total
 
@@ -784,6 +758,7 @@ def compute_group_summary(
                 "display_name": info["display_name"],
                 "month_net": month_net,
                 "today_total": t_total,
+                "today_expense": t_exp,
                 "today_net": t_net,
                 "face_total": face_total,
             }
@@ -795,6 +770,7 @@ def compute_group_summary(
     return {
         "month_total": int(month_total),
         "today_total": int(today_total_sum),
+        "today_expense_total": int(today_expense_sum),
         "today_net_total": int(today_net_sum),
         "face_total": int(face_total_sum),
         "per_user": per_user,
