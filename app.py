@@ -722,18 +722,31 @@ def compute_user_face_totals(user_id: int) -> tuple[int, int]:
 def compute_group_summary(
     master_user_id: int, year: int | None = None, month: int | None = None
 ) -> dict:
+    """計算『連結帳號』各子帳號的統計（跟畫面一致）
+    - 月淨利：採用「歷史繳款」同口徑（當月總收 - 當月總開銷）
+    - 今日實收 / 今日開銷 / 今日淨利
+    - 總票面（未結清）
     """
-    只計算『連結帳號』的指定月份淨利 + 帳號顯示名稱
-    """
-    child_ids = get_child_user_ids(master_user_id)
+    if year is None or month is None:
+        today = date.today()
+        year = today.year
+        month = today.month
 
+    child_ids = get_child_user_ids(master_user_id)
     if not child_ids:
-        return {"month_total": 0, "per_user": []}
+        return {
+            "per_user": [],
+            "month_net_total": 0,
+            "today_total_total": 0,
+            "today_expense_total": 0,
+            "today_net_total": 0,
+            "face_total_total": 0,
+        }
 
     placeholders = ",".join([PH] * len(child_ids))
 
     # 一次抓 username/display_name
-    user_map = {}
+    user_map: dict[int, dict] = {}
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
@@ -747,37 +760,64 @@ def compute_group_summary(
             uid = int(r["id"])
             user_map[uid] = {
                 "username": r["username"],
-                "display_name": r["display_name"] or "",
+                "display_name": (r["display_name"] or ""),
             }
         else:
             uid = int(r[0])
-            user_map[uid] = {"username": r[1], "display_name": r[2] or ""}
+            user_map[uid] = {"username": r[1], "display_name": (r[2] or "")}
 
-    per_user = []
-    total = 0
+    per_user: list[dict] = []
+
+    month_net_total = 0
+    today_total_total = 0
+    today_expense_total = 0
+    today_net_total = 0
+    face_total_total = 0
 
     for uid in child_ids:
-        month_net = get_month_net_for_user(uid, year=year, month=month)
-        total += month_net
+        # ✅ 月淨利（跟歷史頁面一致）
+        month_net = get_month_net_like_history(uid, int(year), int(month))
+
+        # ✅ 今日
+        today_total = get_today_total_for_user(uid)
+        today_expense = get_today_expense_total_for_user(uid)
+        today_net = int(today_total) - int(today_expense)
+
+        # ✅ 總票面（未結清）
+        face_total, _face_left = compute_user_face_totals(uid)
+
+        month_net_total += int(month_net)
+        today_total_total += int(today_total)
+        today_expense_total += int(today_expense)
+        today_net_total += int(today_net)
+        face_total_total += int(face_total)
+
         info = user_map.get(uid, {"username": "", "display_name": ""})
 
         per_user.append(
             {
-                "user_id": uid,
-                "username": info["username"],
-                "display_name": info["display_name"],
+                "user_id": int(uid),
+                "username": info.get("username", ""),
+                "display_name": info.get("display_name", ""),
                 "month_net": int(month_net),
+                "today_total": int(today_total),
+                "today_expense": int(today_expense),
+                "today_net": int(today_net),
+                "face_total": int(face_total),
             }
         )
 
-    # ✅ 排序：淨利高到低
-    per_user.sort(key=lambda x: x["month_net"], reverse=True)
+    # ✅ 排序：月淨利高到低
+    per_user.sort(key=lambda x: x.get("month_net", 0), reverse=True)
 
-    return {"month_total": int(total), "per_user": per_user}
-
-
-from datetime import date
-
+    return {
+        "per_user": per_user,
+        "month_net_total": int(month_net_total),
+        "today_total_total": int(today_total_total),
+        "today_expense_total": int(today_expense_total),
+        "today_net_total": int(today_net_total),
+        "face_total_total": int(face_total_total),
+    }
 
 def _month_start_end(year: int, month: int) -> tuple[str, str]:
     start = date(year, month, 1)
@@ -907,6 +947,44 @@ def get_linked_accounts(master_user_id: int) -> list[dict]:
 
     return out
 
+
+def get_linked_accounts_display(master_user_id: int) -> list[dict]:
+    """回傳已連結帳號（含 link_id 供解除用）"""
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"""
+                SELECT al.id AS link_id, u.id AS user_id, u.username, u.display_name
+                FROM account_links al
+                JOIN users u ON u.id = al.child_user_id
+                WHERE al.master_user_id = {PH}
+                ORDER BY al.id DESC
+                """,
+                (master_user_id,),
+            )
+            rows = cur.fetchall()
+
+    out = []
+    for r in rows:
+        if isinstance(r, sqlite3.Row):
+            out.append(
+                {
+                    "link_id": int(r["link_id"]),
+                    "user_id": int(r["user_id"]),
+                    "username": r["username"],
+                    "display_name": (r["display_name"] or ""),
+                }
+            )
+        else:
+            out.append(
+                {
+                    "link_id": int(r[0]),
+                    "user_id": int(r[1]),
+                    "username": r[2],
+                    "display_name": (r[3] or ""),
+                }
+            )
+    return out
 
 def calc_next_due_day(last_paid_day: int, interval_days: int) -> int:
     if last_paid_day <= 0:
@@ -1120,8 +1198,20 @@ def get_expense_map_for_user(user_id: int):
 
 
 def get_month_net_like_history(user_id: int, year: int, month: int) -> int:
-    """計算「歷史繳款」頁面同樣口徑的月淨利：當月總收 - 當月總開銷。"""
-    ym = f"{year:04d}-{month:02d}"
+    """計算「歷史繳款」頁面同樣口徑的月淨利：當月總收 - 當月總開銷。
+
+    注意：Postgres 這兩個欄位是 DATE；SQLite 是 TEXT。
+    這裡用「月起迄區間」查詢，避免 substr(date,...) 在 Postgres 會報錯。
+    """
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year + 1, 1, 1)
+    else:
+        end = date(year, month + 1, 1)
+
+    start_s = start.isoformat()
+    end_s = end.isoformat()
+
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             # 當月總收（payments）
@@ -1129,24 +1219,24 @@ def get_month_net_like_history(user_id: int, year: int, month: int) -> int:
                 f"""
                 SELECT COALESCE(SUM(amount), 0) AS s
                 FROM payments
-                WHERE user_id = {PH} AND substr(paid_at, 1, 7) = {PH}
+                WHERE user_id = {PH} AND paid_at >= {PH} AND paid_at < {PH}
                 """,
-                (user_id, ym),
+                (user_id, start_s, end_s),
             )
             pay_sum = cur.fetchone()
-            pay_sum = int(pay_sum["s"] if isinstance(pay_sum, sqlite3.Row) else pay_sum[0] or 0)
+            pay_sum = int(pay_sum[0] if not isinstance(pay_sum, sqlite3.Row) else pay_sum[0])
 
             # 當月總開銷（expenses）
             cur.execute(
                 f"""
                 SELECT COALESCE(SUM(amount), 0) AS s
                 FROM expenses
-                WHERE user_id = {PH} AND substr(spent_at, 1, 7) = {PH}
+                WHERE user_id = {PH} AND spent_at >= {PH} AND spent_at < {PH}
                 """,
-                (user_id, ym),
+                (user_id, start_s, end_s),
             )
             exp_sum = cur.fetchone()
-            exp_sum = int(exp_sum["s"] if isinstance(exp_sum, sqlite3.Row) else exp_sum[0] or 0)
+            exp_sum = int(exp_sum[0] if not isinstance(exp_sum, sqlite3.Row) else exp_sum[0])
 
     return pay_sum - exp_sum
 
@@ -1715,7 +1805,7 @@ def add_record(
 
 
 @app.get("/group-month")
-def group_month(request: Request):
+def group_month(request: Request, ym: str | None = None, msg: str | None = None):
     init_db()
     user = require_active(request)
     if not user or isinstance(user, RedirectResponse):
@@ -1723,43 +1813,136 @@ def group_month(request: Request):
 
     # 只有 master 才能看
     if not is_master_user(user["user_id"]):
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/?paid_msg=子帳號無法使用連結帳號功能", status_code=303)
 
-    # 連結功能：付費（不提供試用）
-    ok, mode, until, msg = get_group_access_status(user["user_id"])
-    if not ok:
-        return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
+    group_access_ok, group_access_mode, group_access_until, group_access_msg = get_group_access_status(
+        user["user_id"]
+    )
 
-    # ym=YYYY-MM（不給就用當月）
-    ym = (request.query_params.get("ym") or "").strip()
-    year = month = None
-    if ym and len(ym) == 7 and ym[4] == "-":
-        try:
-            year = int(ym[:4])
-            month = int(ym[5:7])
-        except Exception:
-            year = month = None
+    # 顯示月份
+    if ym and re.match(r"^\d{4}-\d{2}$", ym):
+        y, m = ym.split("-")
+        show_year = int(y)
+        show_month = int(m)
+    else:
+        today = date.today()
+        show_year = today.year
+        show_month = today.month
+    show_ym = f"{show_year:04d}-{show_month:02d}"
 
-    group_summary = compute_group_summary(user["user_id"], year=year, month=month)
+    # 已連結帳號（給列表/解除用）
+    linked_accounts = get_linked_accounts_display(user["user_id"])
 
-    today = date.fromisoformat(today_str())
-    show_y = year or today.year
-    show_m = month or today.month
-    show_ym = f"{show_y:04d}-{show_m:02d}"
+    # 若未開通/已到期，就不要顯示統計（避免直接輸入網址也看到資料）
+    if group_access_ok:
+        group_summary = compute_group_summary(user["user_id"], show_year, show_month)
+    else:
+        group_summary = {
+            "per_user": [],
+            "month_net_total": 0,
+            "today_total_total": 0,
+            "today_expense_total": 0,
+            "today_net_total": 0,
+            "face_total_total": 0,
+        }
 
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
-            "group_summary": group_summary,
             "show_ym": show_ym,
-            "group_mode": mode,
-            "group_until": (until.isoformat() if until else ""),
-            "group_msg": msg,
+            "linked_accounts": linked_accounts,
+            "group_summary": group_summary,
+            "group_access_ok": group_access_ok,
+            "group_access_mode": group_access_mode,
+            "group_access_until": group_access_until,
+            "group_access_msg": group_access_msg,
+            "msg": msg,
         },
     )
 
+
+@app.post("/group/link/add")
+def group_link_add(
+    request: Request,
+    child_username: str = Form(...),
+    child_password: str = Form(...),
+    return_url: str = Form("/group-month"),
+):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse("/?paid_msg=子帳號無法使用連結帳號功能", status_code=303)
+
+    group_access_ok, _mode, _until, group_access_msg = get_group_access_status(user["user_id"])
+    if not group_access_ok:
+        return RedirectResponse(f"/?paid_msg={quote_plus(group_access_msg or '連結帳號功能未開通')}", status_code=303)
+
+    child_username = (child_username or "").strip()
+    if not child_username:
+        return RedirectResponse(f"{return_url}?msg=請輸入子帳號", status_code=303)
+
+    if child_username == user.get("username"):
+        return RedirectResponse(f"{return_url}?msg=不能連結自己", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"SELECT id, password_hash FROM users WHERE username = {PH}",
+                (child_username,),
+            )
+            row = cur.fetchone()
+
+            if not row:
+                return RedirectResponse(f"{return_url}?msg=找不到此子帳號", status_code=303)
+
+            child_id = int(row["id"] if isinstance(row, sqlite3.Row) else row[0])
+            child_hash = row["password_hash"] if isinstance(row, sqlite3.Row) else row[1]
+
+            if not verify_password(child_password or "", child_hash):
+                return RedirectResponse(f"{return_url}?msg=子帳號密碼錯誤", status_code=303)
+
+            # 子帳號只能被一個主帳號連結（表上有 UNIQUE(child_user_id)）
+            try:
+                cur.execute(
+                    f"INSERT INTO account_links (master_user_id, child_user_id) VALUES ({PH}, {PH})",
+                    (user["user_id"], child_id),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                return RedirectResponse(f"{return_url}?msg=此子帳號已被其他主帳號連結或資料重複", status_code=303)
+
+    return RedirectResponse(f"{return_url}?msg=連結成功", status_code=303)
+
+
+@app.post("/group/link/delete")
+def group_link_delete(
+    request: Request,
+    link_id: int = Form(...),
+    return_url: str = Form("/group-month"),
+):
+    init_db()
+    user = require_active(request)
+    if not user or isinstance(user, RedirectResponse):
+        return user
+
+    if not is_master_user(user["user_id"]):
+        return RedirectResponse("/?paid_msg=子帳號無法使用連結帳號功能", status_code=303)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                f"DELETE FROM account_links WHERE id = {PH} AND master_user_id = {PH}",
+                (int(link_id), user["user_id"]),
+            )
+            conn.commit()
+
+    return RedirectResponse(f"{return_url}?msg=已解除連結", status_code=303)
 
 @app.get("/history")
 def history(request: Request):
