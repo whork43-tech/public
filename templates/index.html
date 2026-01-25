@@ -208,6 +208,16 @@
     .notice-card {
       border-left: 6px solid rgba(59, 130, 246, .35);
     }
+    /* 收費說明：縮小按鈕 */
+    .pricing-mini-btn{
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      line-height: 1;
+      opacity: .9;
+    }
+    .pricing-mini-btn:hover{ opacity: 1; }
+
   </style>
 </head>
 
@@ -257,9 +267,13 @@
     {% else %}
     <!-- 💰 收費說明（未開通 / 試用顯示） -->
     {% if user and access_mode != "activated" %}
-    <div class="card" style="margin-top:14px;">
-      <h2 style="margin-top:0;">收費說明</h2>
+  <div class="card" style="margin-top:14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <h2 style="margin:0;">收費說明</h2>
+        <button type="button" class="btn pricing-mini-btn" id="btnTogglePricing" onclick="togglePricing()">縮小</button>
+      </div>
 
+      <div id="pricingBody">
       <p>
         本系統為 <b>個人放款專用</b> 的分期帳務管理工具，
         協助你清楚掌握每一筆收款與支出，避免算錯、漏帳。
@@ -276,7 +290,9 @@
       <p style="margin-bottom:0;">
         📩 開通或續費請聯絡 LINE：<b>@826ynmlh</b>
       </p>
+      </div>
     </div>
+
     {% endif %}
 
     <!-- ✅ 已登入：才渲染主畫面 -->
@@ -311,12 +327,6 @@
       <span class="pill bad">⛔ <b>試用期已結束</b>｜請聯絡 LINE：<b>@826ynmlh</b></span>
       {% endif %}
     </div>
-
-    <!-- 💳 方案價格（易懂版，登入後都顯示） -->
-    <div class="card" style="margin-top:10px;">
-      <div class="meta" style="font-size:14px;">
-        💼 主功能：<b>NT$ 299 / 月</b>　｜　👥 連結帳號：<b>NT$ 199 / 月</b>（不提供試用）
-      </div>
     </div>
 
     {% if access_ok %}
@@ -752,6 +762,17 @@
       const n = document.querySelectorAll('#expenseCard input[name="expense_ids"]:checked').length;
       if (n === 0) { alert('請先勾選要刪除的開銷'); return false; }
       return confirm(`確定要刪除 ${n} 筆開銷嗎？`);
+    }
+
+
+    // 收費說明：縮小/展開（未開通才會渲染）
+    function togglePricing() {
+      const body = document.getElementById('pricingBody');
+      const btn = document.getElementById('btnTogglePricing');
+      if (!body || !btn) return;
+      body.classList.toggle('is-hidden');
+      const hidden = body.classList.contains('is-hidden');
+      btn.textContent = hidden ? '展開' : '縮小';
     }
 
     if (window.innerWidth < 640) {
