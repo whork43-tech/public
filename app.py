@@ -756,10 +756,6 @@ def compute_group_summary(
 
     return {"month_total": int(total), "per_user": per_user}
 
-
-from datetime import date
-
-
 def _month_start_end(year: int, month: int) -> tuple[str, str]:
     start = date(year, month, 1)
     if month == 12:
@@ -814,6 +810,74 @@ def get_month_net_for_user(
 
 
 
+def get_month_net_like_history(
+    user_id: int, year: int | None = None, month: int | None = None
+) -> int:
+    """
+    ✅ 讓「首頁本月淨利」跟「歷史繳款頁」的月份淨利計算一致
+
+    歷史頁的月份統計，是把「有繳款(有 payments) 的那些日期」的：
+      - 當日總收（payments）
+      - 當日總開銷（expenses）
+    做加總。
+
+    也就是：只扣掉「有繳款的日期」那幾天的開銷。
+    （若某天只有開銷但沒有繳款，歷史頁月份統計不會把那天算進去）
+    """
+    today = date.fromisoformat(today_str())
+    y = int(year or today.year)
+    m = int(month or today.month)
+    month_start, month_end = _month_start_end(y, m)
+
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            # 先抓該月「每天」的實收（只會得到有繳款的日期）
+            cur.execute(
+                f"""
+                SELECT paid_at, COALESCE(SUM(amount), 0) AS total
+                FROM payments
+                WHERE user_id = {PH}
+                  AND paid_at >= {PH}
+                  AND paid_at < {PH}
+                GROUP BY paid_at
+                """,
+                (user_id, month_start, month_end),
+            )
+            rows = cur.fetchall()
+
+            pay_dates: list[str] = []
+            income_sum = 0
+
+            for r in rows:
+                if isinstance(r, sqlite3.Row):
+                    d = r["paid_at"]
+                    t = r["total"]
+                else:
+                    d, t = r[0], r[1]
+
+                d_str = d if isinstance(d, str) else d.isoformat()
+                pay_dates.append(d_str)
+                income_sum += int(t or 0)
+
+            # 沒有任何繳款 -> 歷史頁也沒有月份統計
+            if not pay_dates:
+                return 0
+
+            # 只扣掉「有繳款的日期」那幾天的開銷
+            phs = ",".join([PH] * len(pay_dates))
+            cur.execute(
+                f"""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM expenses
+                WHERE user_id = {PH}
+                  AND spent_at IN ({phs})
+                """,
+                tuple([user_id] + pay_dates),
+            )
+            exp_sum = cur.fetchone()[0] or 0
+
+    return int(income_sum) - int(exp_sum)
+
 
 def get_month_meta_map_for_user(user_id: int) -> dict[str, dict[str, int]]:
     """
@@ -850,7 +914,7 @@ def get_month_meta_map_for_user(user_id: int) -> dict[str, dict[str, int]]:
             rows = cur.fetchall()
 
     for r in rows:
-        m = (r[0] or "")
+        m = r[0] or ""
         s = int(r[1] or 0)
         if m:
             income_map[m] = s
@@ -881,7 +945,7 @@ def get_month_meta_map_for_user(user_id: int) -> dict[str, dict[str, int]]:
             rows = cur.fetchall()
 
     for r in rows:
-        m = (r[0] or "")
+        m = r[0] or ""
         s = int(r[1] or 0)
         if m:
             expense_map[m] = s
@@ -893,6 +957,7 @@ def get_month_meta_map_for_user(user_id: int) -> dict[str, dict[str, int]]:
         exp = int(expense_map.get(m, 0))
         out[m] = {"income": inc, "exp": exp, "net": inc - exp}
     return out
+
 
 # ======================
 # Business logic
@@ -1342,7 +1407,7 @@ def home(request: Request):
     today_total = get_today_total_for_user(user["user_id"])
     today_expense_total = get_today_expense_total_for_user(user["user_id"])
     today_expenses = get_today_expenses_for_user(user["user_id"])
-    my_month_net = get_month_net_for_user(user["user_id"])
+    my_month_net = get_month_net_like_history(user["user_id"])
 
     # ✅ 今日淨收
     today_net = int(today_total) - int(today_expense_total)
@@ -1695,17 +1760,33 @@ def add_record(
                 if has_item and has_note:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, item, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
-                        (today_str(), f"新增資料支出：{name}", expense_amount_today, "", user["user_id"]),
+                        (
+                            today_str(),
+                            f"新增資料支出：{name}",
+                            expense_amount_today,
+                            "",
+                            user["user_id"],
+                        ),
                     )
                 elif has_item:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, item, amount, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (today_str(), f"新增資料支出：{name}", expense_amount_today, user["user_id"]),
+                        (
+                            today_str(),
+                            f"新增資料支出：{name}",
+                            expense_amount_today,
+                            user["user_id"],
+                        ),
                     )
                 elif has_note:
                     cur.execute(
                         f"INSERT INTO expenses (spent_at, amount, note, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (today_str(), expense_amount_today, f"新增資料支出：{name}", user["user_id"]),
+                        (
+                            today_str(),
+                            expense_amount_today,
+                            f"新增資料支出：{name}",
+                            user["user_id"],
+                        ),
                     )
                 else:
                     cur.execute(
@@ -1719,12 +1800,23 @@ def add_record(
                 if has_record_name:
                     cur.execute(
                         f"INSERT INTO payments (paid_at, amount, record_id, record_name, user_id) VALUES ({PH}, {PH}, {PH}, {PH}, {PH})",
-                        (today_str(), int(amount or 0), int(record_id), name, user["user_id"]),
+                        (
+                            today_str(),
+                            int(amount or 0),
+                            int(record_id),
+                            name,
+                            user["user_id"],
+                        ),
                     )
                 else:
                     cur.execute(
                         f"INSERT INTO payments (paid_at, amount, record_id, user_id) VALUES ({PH}, {PH}, {PH}, {PH})",
-                        (today_str(), int(amount or 0), int(record_id), user["user_id"]),
+                        (
+                            today_str(),
+                            int(amount or 0),
+                            int(record_id),
+                            user["user_id"],
+                        ),
                     )
 
         conn.commit()
@@ -2100,7 +2192,10 @@ def admin_users_group_activate(
             )
         conn.commit()
 
-    return RedirectResponse("/admin/users?msg=" + quote("已設定連結帳號功能"), status_code=303)
+    return RedirectResponse(
+        "/admin/users?msg=" + quote("已設定連結帳號功能"), status_code=303
+    )
+
 
 @app.post("/admin/users/create")
 def admin_users_create(
