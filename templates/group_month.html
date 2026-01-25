@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>連結帳號｜月淨利</title>
+  <title>連結帳號｜彙總</title>
   <link rel="stylesheet" href="/static/style.css?v=1003">
   <style>
     .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -23,7 +23,7 @@
 
     <div class="card topbar">
       <div>
-        <h2 style="margin:0;">👥 連結帳號｜月淨利</h2>
+        <h2 style="margin:0;">👥 連結帳號｜彙總</h2>
         <div class="mini" style="margin-top:6px;">
           主帳號：<b>{{ user.display_name if user.display_name else user.username }}</b>
           <span style="opacity:.7;">（{{ user.username }}）</span>
@@ -50,7 +50,7 @@
       <div style="font-weight:800; margin-bottom:6px;">⛔ 連結帳號功能未開通</div>
       <div class="mini">
         {% if group_access_mode == "expired" %}
-          試用已到期，請到後台開通「連結帳號功能」。
+          已到期，請到後台重新開通「連結帳號功能」。
         {% else %}
           尚未開通，請到後台開通「連結帳號功能」。
         {% endif %}
@@ -59,9 +59,7 @@
     {% else %}
     <div class="card ok-box">
       <div class="mini">
-        {% if group_access_mode == "trial" %}
-          🧪 試用中｜到期：<b>{{ group_access_until }}</b>
-        {% elif group_access_mode == "activated" %}
+        {% if group_access_mode == "activated" %}
           ✅ 已開通｜到期：<b>{{ group_access_until }}</b>
         {% else %}
           ✅ 可使用
@@ -133,44 +131,52 @@
     </div>
 
     <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center;    <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-        <h2 style="margin:0;">📈 本月淨利（依帳號）</h2>
+        <h2 style="margin:0;">📊 彙總（依帳號）</h2>
         <div class="tag">月份：<b>{{ show_ym }}</b></div>
       </div>
 
       {% if group_summary and group_summary.per_user and group_summary.per_user|length > 0 %}
+      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
+        <div class="tag">🗓️ 月淨利合計：<b>{{ group_summary.month_total }}</b></div>
+        <div class="tag">💰 今日實收合計：<b>{{ group_summary.today_total }}</b></div>
+        <div class="tag">💸 今日開銷合計：<b>{{ group_summary.today_expense_total }}</b></div>
+        <div class="tag">✅ 今日淨利合計：<b>{{ group_summary.today_net_total }}</b></div>
+        <div class="tag">🎟️ 總票面合計：<b>{{ group_summary.face_total }}</b></div>
+      </div>
+
       <div style="margin-top:12px;">
         {% for u in group_summary.per_user %}
         {% set net = u.month_net %}
-        <div class="card" style="margin:0 0 10px; border:1px solid #eee;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        {% set tnet = u.today_net %}
+        <div class="card" style="margin:0 0 10px; border:1px solid #eee; box-shadow:none;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
             <div>
               <div style="font-weight:800;">{{ u.display_name if u.display_name else u.username }}</div>
               <div class="mini">帳號：{{ u.username }}</div>
             </div>
 
-            <div class="tag" style="{% if net < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
-              🗓️ 月淨利：<b>{{ net }}</b>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end;">
+              <div class="tag" style="{% if net < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
+                🗓️ 月淨利：<b>{{ net }}</b>
+              </div>
+              <div class="tag">💰 今日實收：<b>{{ u.today_total }}</b></div>
+              <div class="tag">💸 今日開銷：<b>{{ u.today_expense }}</b></div>
+              <div class="tag" style="{% if tnet < 0 %}border-color:#fecaca; background:#fff5f5;{% else %}border-color:#bbf7d0; background:#f0fff4;{% endif %}">
+                ✅ 今日淨利：<b>{{ tnet }}</b>
+              </div>
+              <div class="tag">🎟️ 總票面：<b>{{ u.face_total }}</b></div>
             </div>
           </div>
         </div>
         {% endfor %}
       </div>
-
-      <div class="tag" style="margin-top:8px;">
-        📊 連結帳號合計：<b>{{ group_summary.month_total }}</b>
-      </div>
       {% else %}
       <div class="mini" style="margin-top:10px;">尚未連結任何帳號（或本月沒有資料）</div>
       {% endif %}
     </div>
-
-  </div>
-
-  <script>
-    (function () {
-      const el = document.getElementById('ym');
-      if (!el) return;
+el) return;
       el.addEventListener('change', function () {
         const v = el.value;
         if (!v) return;
