@@ -159,6 +159,8 @@
 
     .container {
       max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 12px;
     }
 
     h1 {
@@ -190,6 +192,11 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow2);
+    }
+
+    /* 置中：讓區塊都以容器為基準 */
+    .card, details.month-block, details.day-block {
+      width: 100%;
     }
 
     /* 月份摘要更像可點的標題列 */

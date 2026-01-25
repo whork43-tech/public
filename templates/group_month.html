@@ -130,22 +130,16 @@
       </div>
     </div>
 
+    
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center;    <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
         <h2 style="margin:0;">📊 彙總（依帳號）</h2>
         <div class="tag">月份：<b>{{ show_ym }}</b></div>
       </div>
 
       {% if group_summary and group_summary.per_user and group_summary.per_user|length > 0 %}
-      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
-        <div class="tag">🗓️ 月淨利合計：<b>{{ group_summary.month_total }}</b></div>
-        <div class="tag">💰 今日實收合計：<b>{{ group_summary.today_total }}</b></div>
-        <div class="tag">💸 今日開銷合計：<b>{{ group_summary.today_expense_total }}</b></div>
-        <div class="tag">✅ 今日淨利合計：<b>{{ group_summary.today_net_total }}</b></div>
-        <div class="tag">🎟️ 總票面合計：<b>{{ group_summary.face_total }}</b></div>
-      </div>
 
+      <!-- 每個帳號 -->
       <div style="margin-top:12px;">
         {% for u in group_summary.per_user %}
         {% set net = u.month_net %}
@@ -172,11 +166,30 @@
         </div>
         {% endfor %}
       </div>
+
+      <!-- 總結：放最下方 -->
+      <div style="margin-top:14px; padding-top:12px; border-top:1px solid #eee;">
+        <div style="font-weight:900; margin-bottom:10px;">📌 總結</div>
+        <div style="display:flex; flex-wrap:wrap; gap:10px;">
+          <div class="tag">🗓️ 月淨利合計：<b>{{ group_summary.month_total }}</b></div>
+          <div class="tag">💰 今日實收合計：<b>{{ group_summary.today_total }}</b></div>
+          <div class="tag">💸 今日開銷合計：<b>{{ group_summary.today_expense_total }}</b></div>
+          <div class="tag">✅ 今日淨利合計：<b>{{ group_summary.today_net_total }}</b></div>
+          <div class="tag">🎟️ 總票面合計：<b>{{ group_summary.face_total }}</b></div>
+        </div>
+      </div>
+
       {% else %}
       <div class="mini" style="margin-top:10px;">尚未連結任何帳號（或本月沒有資料）</div>
       {% endif %}
     </div>
-el) return;
+
+  </div>
+
+  <script>
+    (function () {
+      const el = document.getElementById('ym');
+      if (!el) return;
       el.addEventListener('change', function () {
         const v = el.value;
         if (!v) return;
