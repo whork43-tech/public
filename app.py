@@ -14,7 +14,8 @@ from fastapi.responses import PlainTextResponse
 
 from fastapi.responses import StreamingResponse
 import io
-import requests
+import urllib.request
+import urllib.parse
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -2152,15 +2153,25 @@ def tools_send_line(
     message = "\n".join(parts)
 
     try:
-        resp = requests.post(
+        # 使用標準庫送出 LINE Notify（避免額外依賴）
+        data = urllib.parse.urlencode({"message": message}).encode("utf-8")
+        req = urllib.request.Request(
             "https://notify-api.line.me/api/notify",
+            data=data,
             headers={"Authorization": f"Bearer {token}"},
-            data={"message": message},
-            timeout=10,
+            method="POST",
         )
-        if resp.status_code != 200:
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                status = getattr(r, "status", 200)
+                body = r.read().decode("utf-8", errors="ignore")
+        except Exception as e:
+            raise RuntimeError(f"LINE Notify 發送失敗：{e}") from e
+
+        if status != 200:
+
             return RedirectResponse(
-                "/tools?msg=" + quote(f"LINE 回報失敗（{resp.status_code}）"),
+                "/tools?msg=" + quote(f"LINE 回報失敗（{status}）"),
                 status_code=303,
             )
     except Exception:
@@ -3245,4 +3256,3 @@ def get_tools_access_status(user_id: int):
             return False, "expired", until_date, "LINE/Excel 功能已到期，請到後台重新開通。"
 
     return False, "expired", None, "LINE/Excel 功能尚未開通，請到後台開通。"
-
