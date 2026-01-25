@@ -1,170 +1,63 @@
 <!doctype html>
 <html lang="zh-Hant">
-
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>後台 - 帳號列表</title>
   <link rel="stylesheet" href="/static/style1.css">
-
   <style>
-    .toolbar {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-top: 12px;
-    }
-
-    .toolbar input[type="text"] {
-      flex: 1;
-      min-width: 200px;
-      padding: 8px 10px;
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      outline: none;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border: 1px solid #e5e7eb;
-      border-radius: 999px;
-      background: #fff;
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .table-wrap {
-      margin-top: 12px;
-      overflow: auto;
-      border: 1px solid #f0f0f0;
-      border-radius: 12px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 860px;
-    }
-
-    thead th {
-      position: sticky;
-      top: 0;
-      background: #fff;
-      z-index: 2;
-      text-align: left;
-      padding: 10px 8px;
-      border-bottom: 1px solid #eee;
-      white-space: nowrap;
-    }
-
-    tbody td {
-      padding: 10px 8px;
-      border-bottom: 1px solid #f2f2f2;
-      vertical-align: middle;
-      white-space: nowrap;
-    }
-
-    .status {
-      font-weight: 700;
-      font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      display: inline-block;
-    }
-
-    .ok {
-      color: #065f46;
-      background: #d1fae5;
-    }
-
-    .no {
-      color: #7c2d12;
-      background: #ffedd5;
-    }
-
-    .muted2 {
-      opacity: .7;
-      font-size: 12px;
-    }
-
-    .quick {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .btn.sm {
-      padding: 6px 10px;
-      font-size: 13px;
-      border-radius: 10px;
-    }
-
-    .days-input {
-      width: 110px;
-      padding: 8px 10px;
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-    }
-
-    @media (max-width: 640px) {
-      .layout {
-        padding: 10px;
-      }
-    }
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;}
+    .toolbar input[type="text"]{flex:1;min-width:200px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;outline:none;}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;font-size:13px;cursor:pointer;user-select:none;}
+    .table-wrap{margin-top:12px;overflow:auto;border:1px solid #f0f0f0;border-radius:12px;}
+    table{width:100%;border-collapse:collapse;min-width:980px;}
+    thead th{position:sticky;top:0;background:#fff;z-index:2;text-align:left;padding:10px 8px;border-bottom:1px solid #eee;white-space:nowrap;}
+    tbody td{padding:10px 8px;border-bottom:1px solid #f2f2f2;vertical-align:top;white-space:nowrap;}
+    .status{font-weight:700;font-size:12px;padding:4px 8px;border-radius:999px;display:inline-block;}
+    .ok{color:#065f46;background:#d1fae5;}
+    .no{color:#7c2d12;background:#ffedd5;}
+    .muted2{opacity:.7;font-size:12px;}
+    .quick{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+    .btn.sm{padding:6px 10px;font-size:13px;border-radius:10px;}
+    .days-input{width:110px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;}
+    .block{display:flex;flex-direction:column;gap:8px;min-width:320px;}
+    .box{border:1px solid #eef2f7;border-radius:12px;padding:10px;background:#fff;}
+    .box .title{font-weight:800;margin-bottom:6px;}
+    .line{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+    @media (max-width:640px){ .layout{padding:10px;} }
   </style>
 </head>
-
 <body>
   <div class="layout" style="grid-template-columns: 1fr;">
     <div class="card">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <h2 style="margin:0;">後台｜所有帳號</h2>
-        <!-- 後台總覽 -->
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
-          <span class="pill">👥 總帳號 <b>{{ users|length }}</b></span>
-          <span class="pill">✅ 已開通 <b>{{ users|selectattr('activated_at')|list|length }}</b></span>
-          <span class="pill">⛔ 未開通 <b>{{ users|rejectattr('activated_at')|list|length }}</b></span>
+        <div>
+          <h2 style="margin:0;">後台｜所有帳號</h2>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+            <span class="pill">👥 總帳號 <b>{{ users|length }}</b></span>
+            <span class="pill">✅ 已開通 <b>{{ users|selectattr('activated_at')|list|length }}</b></span>
+            <span class="pill">⛔ 未開通 <b>{{ users|rejectattr('activated_at')|list|length }}</b></span>
+          </div>
         </div>
-
         <a class="btn" href="/">回首頁</a>
       </div>
 
-      <!-- 工具列 -->
       {% if msg %}
-      <div class="card" style="margin-top:12px;">
-        <b>{{ msg }}</b>
-      </div>
+      <div class="card" style="margin-top:12px;"><b>{{ msg }}</b></div>
       {% endif %}
 
       <div class="toolbar">
         <input id="searchInput" type="text" placeholder="搜尋： ID / 帳號（即時過濾）">
-
-        <label class="pill">
-          <input id="onlyNotActive" type="checkbox">
-          只看未開通
-        </label>
-
+        <label class="pill"><input id="onlyNotActive" type="checkbox"> 只看未開通</label>
         <div class="muted2" id="countInfo"></div>
       </div>
 
-
-      <!-- 新增帳號 -->
       <div class="card" style="margin-top:12px;">
         <h3 style="margin:0 0 10px;">新增帳號</h3>
-        <form method="post" action="/admin/users/create"
-          style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <input type="text" name="display_name" placeholder="名稱" required
-            style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
-          <input type="text" name="username" placeholder="帳號" required
-            style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
-          <input type="text" name="password" placeholder="密碼(至少6碼)" required
-            style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
+        <form method="post" action="/admin/users/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input type="text" name="display_name" placeholder="名稱" required style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
+          <input type="text" name="username" placeholder="帳號" required style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
+          <input type="text" name="password" placeholder="密碼(至少6碼)" required style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:10px;">
           <button class="btn" type="submit">新增</button>
         </form>
       </div>
@@ -177,167 +70,139 @@
               <th>名稱</th>
               <th>帳號</th>
               <th>狀態</th>
-              <th>開通時間</th>
+              <th>主功能到期</th>
               <th>最後上線</th>
               <th>剩餘</th>
               <th>操作</th>
             </tr>
           </thead>
 
-
           <tbody id="userTbody">
-            {% for u in users %}
-            <tr class="user-row" data-id="{{ u.id }}" data-username="{{ u.username|lower }}"
-              data-active="{% if u.activated_at %}1{% else %}0{% endif %}"
-              data-activated="{% if u.activated_at %}{{ u.activated_at }}{% endif %}">
+          {% for u in users %}
+            <tr class="user-row"
+                data-id="{{ u.id }}"
+                data-username="{{ u.username|lower }}"
+                data-active="{% if u.activated_at %}1{% else %}0{% endif %}"
+                data-activated="{% if u.activated_at %}{{ u.activated_at }}{% endif %}">
               <td>{{ u.id }}</td>
               <td>{{ u.display_name }}</td>
               <td>{{ u.username }}</td>
 
               <td>
                 {% if u.activated_at %}
-                <span class="status ok">使用中</span>
+                  <span class="status ok">使用中</span>
                 {% else %}
-                <span class="status no">未啟用</span>
+                  <span class="status no">未啟用</span>
                 {% endif %}
               </td>
 
               <td>
                 {% if u.activated_at %}
-                {{ u.activated_at }}
+                  {{ u.activated_at }}
                 {% else %}
-                <span class="muted">未開通</span>
+                  <span class="muted2">未開通</span>
                 {% endif %}
               </td>
 
               <td>
                 {% if u.last_seen_at %}
-                {{ u.last_seen_at }}
+                  {{ u.last_seen_at }}
                 {% else %}
-                <span class="muted2">尚未登入</span>
+                  <span class="muted2">尚未登入</span>
                 {% endif %}
               </td>
 
-              <td>
-                <span class="muted2 remain"></span>
-              </td>
+              <td><span class="muted2 remain"></span></td>
 
-              <td>
-                <form class="act-form" method="post" action="/admin/users/activate"
-                  style="display:flex; gap:8px; align-items:center; margin:0; flex-wrap:wrap;">
-                  <input type="hidden" name="user_id" value="{{ u.id }}">
+              <td style="white-space:normal;">
+                <div class="block">
 
-                  <input class="days-input" type="number" name="days" min="1" placeholder="開通天數">
-
-                  <div class="quick">
-                    <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
-                    <button class="btn sm" type="submit">設定</button>
-
-                    {% if u.activated_at %}
-                    <button class="btn sm danger" type="submit" name="clear" value="1"
-                      onclick="return confirm('確定要清除開通時間？');">
-                      清除
-                    </button>
-                    {% endif %}
-                  </div>
-                </form>
-
-                <form class="act-form" method="post" action="/admin/users/group_activate"
-                  style="display:flex; gap:8px; align-items:center; margin:8px 0 0; flex-wrap:wrap;">
-                  <input type="hidden" name="user_id" value="{{ u.id }}">
-
-                  <input class="days-input" type="number" name="days" min="1" placeholder="連結功能天數">
-
-                  <div class="quick">
-                    <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
-                    <button class="btn sm" type="submit">設定連結功能</button>
-
-                    {% if u.group_activated_at %}
-                    <button class="btn sm danger" type="submit" name="clear" value="1"
-                      onclick="return confirm('確定要清除連結功能開通時間？');">
-                      清除
-                    </button>
-                    {% endif %}
+                  <!-- 主功能 -->
+                  <div class="box">
+                    <div class="title">💼 主功能（月費 299）</div>
+                    <form method="post" action="/admin/users/activate" class="line" style="margin:0;">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <input class="days-input" type="number" name="days" min="1" placeholder="開通天數">
+                      <div class="quick">
+                        <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
+                        <button class="btn sm" type="submit">設定</button>
+                        {% if u.activated_at %}
+                          <button class="btn sm danger" type="submit" name="clear" value="1"
+                            onclick="return confirm('確定要清除主功能開通時間？');">清除</button>
+                        {% endif %}
+                      </div>
+                    </form>
                   </div>
 
-                  <div class="muted2" style="width:100%;">
-                    {% if u.group_activated_at %}
-                    連結功能到期：{{ u.group_activated_at }}
-                    {% elif u.group_trial_started_at %}
-                    連結功能試用開始：{{ u.group_trial_started_at }}
-                    {% else %}
-                    連結功能：尚未使用（未啟動試用）
-                    {% endif %}
+                  <!-- 連結帳號 -->
+                  <div class="box">
+                    <div class="title">👥 連結帳號（加購 199 / 月｜無試用）</div>
+                    <form method="post" action="/admin/users/group-activate" class="line" style="margin:0;">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <input class="days-input" type="number" name="days" min="1" placeholder="開通天數">
+                      <div class="quick">
+                        <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
+                        <button class="btn sm" type="submit">設定連結</button>
+                        {% if u.group_activated_at %}
+                          <button class="btn sm danger" type="submit" name="clear" value="1"
+                            onclick="return confirm('確定要清除連結帳號功能開通時間？');">清除</button>
+                        {% endif %}
+                      </div>
+                    </form>
+                    <div class="muted2" style="margin-top:6px;">
+                      {% if u.group_activated_at %}
+                        到期：{{ u.group_activated_at }}
+                      {% else %}
+                        尚未開通
+                      {% endif %}
+                    </div>
                   </div>
-                
-                <form method="post" action="/admin/users/tools-activate" style="margin-top:10px;">
-                  <input type="hidden" name="user_id" value="{{ u.id }}" />
-                  <div class="row" style="align-items:center; gap:8px; flex-wrap:wrap;">
-                    <div class="muted2" style="min-width:120px;">LINE / Excel 功能</div>
-                    <input class="inp" type="number" name="days" placeholder="開通天數" min="1" style="width:120px;">
-                    <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
-                    <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
-                    <button class="btn sm" type="submit">設定 LINE/Excel</button>
 
-                    {% if u.tools_activated_at %}
-                    <button class="btn sm danger" type="submit" name="clear" value="1"
-                      onclick="return confirm('確定要清除 LINE/Excel 功能開通時間？');">
-                      清除
-                    </button>
-                    {% endif %}
+                  <!-- LINE / Excel -->
+                  <div class="box">
+                    <div class="title">📤 LINE / Excel（加購 199 / 月｜無試用）</div>
+                    <form method="post" action="/admin/users/tools-activate" class="line" style="margin:0;">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <input class="days-input" type="number" name="days" min="1" placeholder="開通天數">
+                      <div class="quick">
+                        <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
+                        <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
+                        <button class="btn sm" type="submit">設定 LINE/Excel</button>
+                        {% if u.tools_activated_at %}
+                          <button class="btn sm danger" type="submit" name="clear" value="1"
+                            onclick="return confirm('確定要清除 LINE/Excel 功能開通時間？');">清除</button>
+                        {% endif %}
+                      </div>
+                    </form>
+                    <div class="muted2" style="margin-top:6px;">
+                      {% if u.tools_activated_at %}
+                        到期：{{ u.tools_activated_at }}
+                      {% else %}
+                        尚未開通
+                      {% endif %}
+                    </div>
                   </div>
 
-                  <div class="muted2" style="width:100%; margin-top:6px;">
-                    {% if u.tools_activated_at %}
-                    LINE/Excel 到期：{{ u.tools_activated_at }}
-                    {% else %}
-                    LINE/Excel：尚未開通
-                    {% endif %}
-                  </div>
-                </form>
-</form>
+                  <!-- 刪除帳號 -->
+                  <form method="post" action="/admin/users/delete" style="margin:0;"
+                        onsubmit="return confirm('確定要刪除此帳號？');">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <button class="btn sm danger" type="submit">刪除帳號</button>
+                  </form>
 
-
-                <form method="post" action="/admin/users/delete" style="margin:8px 0 0;"
-                  onsubmit="return confirm('確定要刪除此帳號？');">
-                  <input type="hidden" name="user_id" value="{{ u.id }}">
-                  <button class="btn sm danger" type="submit">刪除帳號</button>
-                </form>
-              </td>
-              <form class="act-form" method="post" action="/admin/users/group_activate"
-                style="display:flex; gap:8px; align-items:center; margin:8px 0 0; flex-wrap:wrap;">
-                <input type="hidden" name="user_id" value="{{ u.id }}">
-
-                <input class="days-input" type="number" name="days" min="1" placeholder="連結功能天數">
-
-                <div class="quick">
-                  <button class="btn sm" type="button" onclick="fillDays(this, 7)">+7</button>
-                  <button class="btn sm" type="button" onclick="fillDays(this, 30)">+30</button>
-                  <button class="btn sm" type="button" onclick="fillDays(this, 90)">+90</button>
-                  <button class="btn sm" type="button" onclick="fillDays(this, 180)">+180</button>
-                  <button class="btn sm" type="submit">設定連結功能</button>
-
-                  {% if u.group_activated_at %}
-                  <button class="btn sm danger" type="submit" name="clear" value="1"
-                    onclick="return confirm('確定要清除連結功能開通時間？');">
-                    清除
-                  </button>
-                  {% endif %}
                 </div>
-              </form>
+              </td>
             </tr>
-            {% else %}
-            <tr>
-              <td colspan="7" class="muted" style="padding:12px;">目前沒有帳號</td>
-            </tr>
-            {% endfor %}
+          {% else %}
+            <tr><td colspan="8" class="muted2" style="padding:12px;">目前沒有帳號</td></tr>
+          {% endfor %}
           </tbody>
         </table>
       </div>
@@ -345,97 +210,67 @@
       <div class="muted2" style="margin-top:10px;">
         小提示：搜尋與篩選只影響畫面顯示，不會影響資料。
       </div>
-
     </div>
   </div>
 
   <script>
-    function parseISODate(s) {
-      // s: "YYYY-MM-DD"
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((s || '').trim());
-      if (!m) return null;
-      const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
-      // 用本地時區的 00:00 來算天數
-      return new Date(y, mo, d);
+    function parseISODate(s){
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((s||'').trim());
+      if(!m) return null;
+      const y=Number(m[1]), mo=Number(m[2])-1, d=Number(m[3]);
+      return new Date(y,mo,d);
     }
-
-    function daysBetween(a, b) {
-      // a,b: Date
-      const ms = 24 * 60 * 60 * 1000;
-      const ta = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
-      const tb = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
-      return Math.round((tb - ta) / ms);
+    function daysBetween(a,b){
+      const ms=24*60*60*1000;
+      const ta=new Date(a.getFullYear(),a.getMonth(),a.getDate()).getTime();
+      const tb=new Date(b.getFullYear(),b.getMonth(),b.getDate()).getTime();
+      return Math.round((tb-ta)/ms);
     }
-
-    function refreshRemain() {
-      const today = new Date();
-      document.querySelectorAll('.user-row').forEach(row => {
-        const remainEl = row.querySelector('.remain');
-        const activated = row.getAttribute('data-activated') || '';
-        const dt = parseISODate(activated);
-        if (!dt) {
-          remainEl.textContent = '-';
-          return;
-        }
-        const left = daysBetween(today, dt);
-        if (left > 7) {
-          remainEl.textContent = `剩 ${left} 天`;
-          remainEl.style.color = '#065f46';
-        } else if (left > 0) {
-          remainEl.textContent = `⚠ 剩 ${left} 天`;
-          remainEl.style.color = '#b45309';
-        } else if (left === 0) {
-          remainEl.textContent = '⛔ 今天到期';
-          remainEl.style.color = '#dc2626';
-        } else {
-          remainEl.textContent = `⛔ 已到期 ${Math.abs(left)} 天`;
-          remainEl.style.color = '#dc2626';
-        }
+    function refreshRemain(){
+      const today=new Date();
+      document.querySelectorAll('.user-row').forEach(row=>{
+        const remainEl=row.querySelector('.remain');
+        const activated=row.getAttribute('data-activated')||'';
+        const dt=parseISODate(activated);
+        if(!dt){ remainEl.textContent='-'; return; }
+        const left=daysBetween(today,dt);
+        if(left>7){ remainEl.textContent=`剩 ${left} 天`; remainEl.style.color='#065f46'; }
+        else if(left>0){ remainEl.textContent=`⚠ 剩 ${left} 天`; remainEl.style.color='#b45309'; }
+        else if(left===0){ remainEl.textContent='⛔ 今天到期'; remainEl.style.color='#dc2626'; }
+        else { remainEl.textContent=`⛔ 已到期 ${Math.abs(left)} 天`; remainEl.style.color='#dc2626'; }
       })
     }
-
-
-    function applyFilter() {
-      const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
-      const onlyNot = document.getElementById('onlyNotActive').checked;
-
-      let shown = 0;
-      let total = 0;
-
-      document.querySelectorAll('.user-row').forEach(row => {
+    function applyFilter(){
+      const q=(document.getElementById('searchInput').value||'').trim().toLowerCase();
+      const onlyNot=document.getElementById('onlyNotActive').checked;
+      let shown=0,total=0;
+      document.querySelectorAll('.user-row').forEach(row=>{
         total++;
-        const id = row.getAttribute('data-id') || '';
-        const un = row.getAttribute('data-username') || '';
-        const active = row.getAttribute('data-active') === '1';
-
-        const matchQ = (!q) || id.includes(q) || un.includes(q);
-        const matchActive = (!onlyNot) || (!active);
-
-        const ok = matchQ && matchActive;
-        row.style.display = ok ? '' : 'none';
-        if (ok) shown++;
+        const id=row.getAttribute('data-id')||'';
+        const un=row.getAttribute('data-username')||'';
+        const active=row.getAttribute('data-active')==='1';
+        const matchQ=(!q)||id.includes(q)||un.includes(q);
+        const matchActive=(!onlyNot)||(!active);
+        const ok=matchQ && matchActive;
+        row.style.display=ok?'':'none';
+        if(ok) shown++;
       });
-
-      document.getElementById('countInfo').textContent = `顯示 ${shown} / ${total}`;
+      document.getElementById('countInfo').textContent=`顯示 ${shown} / ${total}`;
     }
-
-    function fillDays(btn, n) {
-      const form = btn.closest('form');
-      if (!form) return;
-      const input = form.querySelector('input[name="days"]');
-      if (!input) return;
-      input.value = String(n);
+    function fillDays(btn,n){
+      const form=btn.closest('form');
+      if(!form) return;
+      const input=form.querySelector('input[name="days"]');
+      if(!input) return;
+      input.value=String(n);
       input.focus();
     }
-
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded',()=>{
       refreshRemain();
       applyFilter();
-
-      document.getElementById('searchInput').addEventListener('input', applyFilter);
-      document.getElementById('onlyNotActive').addEventListener('change', applyFilter);
+      document.getElementById('searchInput').addEventListener('input',applyFilter);
+      document.getElementById('onlyNotActive').addEventListener('change',applyFilter);
     });
   </script>
 </body>
-
 </html>
