@@ -500,13 +500,11 @@ def _parse_iso_date(s: str | None):
 
 def get_group_access_status(user_id: int):
     """
-    連結功能狀態：
-    - 第一次使用：自動啟動 7 天試用（寫入 group_trial_started_at）
-    - 試用中：OK
+    連結帳號功能狀態（**不提供試用**）：
     - 付費中：OK（group_activated_at >= today）
-    - 到期：不給用
+    - 到期 / 未開通：不給用
     回傳 (ok, mode, until, msg)
-    mode: "activated" | "trial" | "expired"
+    mode: "activated" | "expired"
     """
     init_db()
     today = date.fromisoformat(today_str())
@@ -514,7 +512,7 @@ def get_group_access_status(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
-                f"SELECT group_activated_at, group_trial_started_at FROM users WHERE id = {PH}",
+                f"SELECT group_activated_at FROM users WHERE id = {PH}",
                 (user_id,),
             )
             row = cur.fetchone()
@@ -522,42 +520,30 @@ def get_group_access_status(user_id: int):
     if not row:
         return (False, "expired", None, "帳號不存在")
 
-    if isinstance(row, sqlite3.Row):
-        activated_s = row["group_activated_at"]
-        trial_s = row["group_trial_started_at"]
-    else:
-        activated_s = row[0]
-        trial_s = row[1]
-
+    activated_s = row["group_activated_at"] if isinstance(row, sqlite3.Row) else row[0]
     activated = _parse_iso_date(activated_s)
-    trial_start = _parse_iso_date(trial_s)
 
-    # 1) 已付費開通
+    # 已付費開通（未到期）
     if activated and today <= activated:
         return (True, "activated", activated, "")
 
-    # 2) 試用已開始
-    if trial_start:
-        trial_until = trial_start + timedelta(days=7)
-        if today <= trial_until:
-            return (True, "trial", trial_until, "")
+    # 已有日期但到期
+    if activated:
         return (
             False,
             "expired",
-            None,
-            "連結功能試用已到期，請聯絡 LINE：@826ynmlh 開通",
+            activated,
+            "連結帳號功能已到期，請到後台重新開通。",
         )
 
-    # 3) 第一次使用：啟動試用
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"UPDATE users SET group_trial_started_at = {PH} WHERE id = {PH}",
-                (today.isoformat(), user_id),
-            )
-        conn.commit()
+    # 尚未開通
+    return (
+        False,
+        "expired",
+        None,
+        "連結帳號功能尚未開通，請到後台開通。",
+    )
 
-    return (True, "trial", today + timedelta(days=7), "")
 
 
 def get_access_status(user_id: int):
@@ -1310,7 +1296,7 @@ def home(request: Request):
         if int(r.get("paid_count", 0)) < int(r.get("periods", 0))
     )
 
-            # ✅ 加購功能：LINE/Excel（不提供試用）
+    # ✅ 加購功能：LINE/Excel（不提供試用）
     tools_access_ok, tools_access_mode, tools_access_until, tools_access_msg = (
         get_tools_access_status(user["user_id"])
     )
@@ -1327,7 +1313,7 @@ def home(request: Request):
             "",
         )
 
-return templates.TemplateResponse(
+    return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
@@ -1702,7 +1688,7 @@ def group_month(request: Request):
     if not is_master_user(user["user_id"]):
         return RedirectResponse("/", status_code=303)
 
-    # 連結功能：7天試用 + 付費（回傳 4 個值）
+    # 連結功能：付費（不提供試用）
     ok, mode, until, msg = get_group_access_status(user["user_id"])
     if not ok:
         return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
