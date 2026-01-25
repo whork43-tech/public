@@ -704,21 +704,12 @@ def compute_group_summary(
     master_user_id: int, year: int | None = None, month: int | None = None
 ) -> dict:
     """
-    連結帳號彙總（不影響各帳號原本資料與功能）
-    每個子帳號提供：
-    - 月淨利（指定月份）
-    - 今日實收、今日淨利
-    - 總票面（未結清）
+    只計算『連結帳號』的指定月份淨利 + 帳號顯示名稱
     """
     child_ids = get_child_user_ids(master_user_id)
+
     if not child_ids:
-        return {
-            "month_total": 0,
-            "today_total": 0,
-            "today_net_total": 0,
-            "face_total": 0,
-            "per_user": [],
-        }
+        return {"month_total": 0, "per_user": []}
 
     placeholders = ",".join([PH] * len(child_ids))
 
@@ -744,47 +735,26 @@ def compute_group_summary(
             user_map[uid] = {"username": r[1], "display_name": r[2] or ""}
 
     per_user = []
-    month_total = 0
-    today_total_sum = 0
-    today_net_sum = 0
-    face_total_sum = 0
+    total = 0
 
     for uid in child_ids:
-        month_net = int(get_month_net_for_user(uid, year=year, month=month))
-        t_total = int(get_today_total_for_user(uid))
-        t_exp = int(get_today_expense_total_for_user(uid))
-        t_net = t_total - t_exp
-        face_total, _face_left = compute_user_face_totals(uid)
-        face_total = int(face_total)
-
-        month_total += month_net
-        today_total_sum += t_total
-        today_net_sum += t_net
-        face_total_sum += face_total
-
+        month_net = get_month_net_for_user(uid, year=year, month=month)
+        total += month_net
         info = user_map.get(uid, {"username": "", "display_name": ""})
+
         per_user.append(
             {
                 "user_id": uid,
                 "username": info["username"],
                 "display_name": info["display_name"],
-                "month_net": month_net,
-                "today_total": t_total,
-                "today_net": t_net,
-                "face_total": face_total,
+                "month_net": int(month_net),
             }
         )
 
-    # ✅ 排序：月淨利高到低
-    per_user.sort(key=lambda x: int(x.get("month_net", 0)), reverse=True)
+    # ✅ 排序：淨利高到低
+    per_user.sort(key=lambda x: x["month_net"], reverse=True)
 
-    return {
-        "month_total": int(month_total),
-        "today_total": int(today_total_sum),
-        "today_net_total": int(today_net_sum),
-        "face_total": int(face_total_sum),
-        "per_user": per_user,
-    }
+    return {"month_total": int(total), "per_user": per_user}
 
 
 from datetime import date
@@ -842,6 +812,87 @@ def get_month_net_for_user(
 
     return int(income) - int(expense)
 
+
+
+
+def get_month_meta_map_for_user(user_id: int) -> dict[str, dict[str, int]]:
+    """
+    取得「每月總收 / 每月總開銷 / 每月淨利」彙總表（用於歷史頁月份統計）。
+    ✅ 規則跟首頁『本月淨利』一致：
+      淨利 = 該月實收(payments) - 該月開銷(expenses)
+    """
+    income_map: dict[str, int] = {}
+    expense_map: dict[str, int] = {}
+
+    # payments -> month
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            if IS_SQLITE:
+                cur.execute(
+                    f"""
+                    SELECT substr(paid_at, 1, 7) AS m, COALESCE(SUM(amount), 0) AS s
+                    FROM payments
+                    WHERE user_id = {PH}
+                    GROUP BY m
+                    """,
+                    (user_id,),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT to_char(paid_at, 'YYYY-MM') AS m, COALESCE(SUM(amount), 0) AS s
+                    FROM payments
+                    WHERE user_id = {PH}
+                    GROUP BY m
+                    """,
+                    (user_id,),
+                )
+            rows = cur.fetchall()
+
+    for r in rows:
+        m = (r[0] or "")
+        s = int(r[1] or 0)
+        if m:
+            income_map[m] = s
+
+    # expenses -> month
+    with get_conn() as conn:
+        with get_cursor(conn) as cur:
+            if IS_SQLITE:
+                cur.execute(
+                    f"""
+                    SELECT substr(spent_at, 1, 7) AS m, COALESCE(SUM(amount), 0) AS s
+                    FROM expenses
+                    WHERE user_id = {PH}
+                    GROUP BY m
+                    """,
+                    (user_id,),
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT to_char(spent_at, 'YYYY-MM') AS m, COALESCE(SUM(amount), 0) AS s
+                    FROM expenses
+                    WHERE user_id = {PH}
+                    GROUP BY m
+                    """,
+                    (user_id,),
+                )
+            rows = cur.fetchall()
+
+    for r in rows:
+        m = (r[0] or "")
+        s = int(r[1] or 0)
+        if m:
+            expense_map[m] = s
+
+    months = set(income_map.keys()) | set(expense_map.keys())
+    out: dict[str, dict[str, int]] = {}
+    for m in sorted(months, reverse=True):
+        inc = int(income_map.get(m, 0))
+        exp = int(expense_map.get(m, 0))
+        out[m] = {"income": inc, "exp": exp, "net": inc - exp}
+    return out
 
 # ======================
 # Business logic
@@ -1693,10 +1744,8 @@ def group_month(request: Request):
         return RedirectResponse("/", status_code=303)
 
     # 連結功能：7天試用 + 付費（回傳 4 個值）
-    group_access_ok, group_access_mode, group_access_until, msg = get_group_access_status(
-        user["user_id"]
-    )
-    if not group_access_ok:
+    ok, mode, until, msg = get_group_access_status(user["user_id"])
+    if not ok:
         return RedirectResponse("/?paid_msg=" + quote(msg), status_code=303)
 
     # ym=YYYY-MM（不給就用當月）
@@ -1716,56 +1765,21 @@ def group_month(request: Request):
     show_m = month or today.month
     show_ym = f"{show_y:04d}-{show_m:02d}"
 
-    # ✅ 讀已連結帳號（提供給模板顯示/解除連結）
-    linked_accounts: list[dict] = []
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"""
-                SELECT al.id AS link_id, u.username, u.display_name
-                FROM account_links al
-                JOIN users u ON u.id = al.child_user_id
-                WHERE al.master_user_id = {PH}
-                ORDER BY u.id ASC
-                """,
-                (user["user_id"],),
-            )
-            rows = cur.fetchall()
-
-    for r in rows:
-        if isinstance(r, sqlite3.Row):
-            linked_accounts.append(
-                {
-                    "link_id": int(r["link_id"]),
-                    "username": r["username"],
-                    "display_name": r["display_name"] or "",
-                }
-            )
-        else:
-            linked_accounts.append(
-                {"link_id": int(r[0]), "username": r[1], "display_name": r[2] or ""}
-            )
-
     return templates.TemplateResponse(
         "group_month.html",
         {
             "request": request,
             "user": user,
-            "msg": msg,
-            "group_access_ok": group_access_ok,
-            "group_access_mode": group_access_mode,
-            "group_access_until": (
-                group_access_until.isoformat() if group_access_until else ""
-            ),
-            "linked_accounts": linked_accounts,
             "group_summary": group_summary,
             "show_ym": show_ym,
+            "group_mode": mode,
+            "group_until": (until.isoformat() if until else ""),
+            "group_msg": msg,
         },
     )
 
 
 @app.get("/history")
-
 def history(request: Request):
     user = require_active(request)
     if not user:
@@ -1784,6 +1798,7 @@ def history(request: Request):
             "user": user,
             "groups": groups,
             "expense_map": expense_map,
+            "month_meta": get_month_meta_map_for_user(user["user_id"]),
         },
     )
 
@@ -2047,48 +2062,6 @@ def admin_users_activate(
         conn.commit()
 
     return RedirectResponse("/admin/users", status_code=303)
-
-
-
-@app.post("/admin/users/activate-clear-multiple")
-def admin_users_activate_clear_multiple(
-    request: Request,
-    user_ids: list[str] = Form([]),
-):
-    init_db()
-    admin = require_admin(request)
-    if not admin:
-        return RedirectResponse("/?paid_msg=" + quote("無權限"), status_code=303)
-
-    # 轉成 int，避免亂值
-    ids: list[int] = []
-    for x in user_ids or []:
-        try:
-            ids.append(int(x))
-        except Exception:
-            pass
-
-    if not ids:
-        return RedirectResponse(
-            "/admin/users?msg=" + quote("請先勾選要清除的已開通帳號"),
-            status_code=303,
-        )
-
-    placeholders = ",".join([PH] * len(ids))
-    params = [None, *ids]  # activated_at 設為 NULL
-
-    with get_conn() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute(
-                f"UPDATE users SET activated_at = {PH} WHERE id IN ({placeholders})",
-                params,
-            )
-        conn.commit()
-
-    return RedirectResponse(
-        "/admin/users?msg=" + quote(f"已清除 {len(ids)} 筆帳號的開通時間"),
-        status_code=303,
-    )
 
 
 @app.post("/admin/users/group-activate")
