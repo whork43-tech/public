@@ -14,8 +14,7 @@ from fastapi.responses import PlainTextResponse
 
 from fastapi.responses import StreamingResponse
 import io
-import urllib.request
-import urllib.parse
+import requests
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -827,6 +826,14 @@ def get_month_net_for_user(
             expense = cur.fetchone()[0] or 0
 
     return int(income) - int(expense)
+
+
+# ✅ 與「歷史繳款」頁面一致的月淨利算法（當月實收 - 當月開銷）
+#    之前在多處呼叫 get_month_net_like_history，但未定義會導致 /tools 等頁面報錯。
+def get_month_net_like_history(
+    user_id: int, year: int | None = None, month: int | None = None
+) -> int:
+    return get_month_net_for_user(user_id, year=year, month=month)
 
 
 # ======================
@@ -2153,25 +2160,15 @@ def tools_send_line(
     message = "\n".join(parts)
 
     try:
-        # 使用標準庫送出 LINE Notify（避免額外依賴）
-        data = urllib.parse.urlencode({"message": message}).encode("utf-8")
-        req = urllib.request.Request(
+        resp = requests.post(
             "https://notify-api.line.me/api/notify",
-            data=data,
             headers={"Authorization": f"Bearer {token}"},
-            method="POST",
+            data={"message": message},
+            timeout=10,
         )
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                status = getattr(r, "status", 200)
-                body = r.read().decode("utf-8", errors="ignore")
-        except Exception as e:
-            raise RuntimeError(f"LINE Notify 發送失敗：{e}") from e
-
-        if status != 200:
-
+        if resp.status_code != 200:
             return RedirectResponse(
-                "/tools?msg=" + quote(f"LINE 回報失敗（{status}）"),
+                "/tools?msg=" + quote(f"LINE 回報失敗（{resp.status_code}）"),
                 status_code=303,
             )
     except Exception:
@@ -3256,3 +3253,4 @@ def get_tools_access_status(user_id: int):
             return False, "expired", until_date, "LINE/Excel 功能已到期，請到後台重新開通。"
 
     return False, "expired", None, "LINE/Excel 功能尚未開通，請到後台開通。"
+
