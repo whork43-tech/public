@@ -484,7 +484,7 @@ def get_group_access_status(user_id: int):
     with get_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute(
-                "SELECT group_activated_at FROM users WHERE id = ?",
+                f"SELECT group_activated_at FROM users WHERE id = {PH}",
                 (user_id,),
             )
             row = cur.fetchone()
