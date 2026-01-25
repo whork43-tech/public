@@ -208,6 +208,41 @@
     .notice-card {
       border-left: 6px solid rgba(59, 130, 246, .35);
     }
+
+    /* ✅ 防止功能/顯示區塊超出頁面（避免水平捲動） */
+    .container{
+      width: min(1100px, 100%);
+      margin: 0 auto;
+      padding: 0 14px;
+      box-sizing: border-box;
+      overflow-x: hidden;
+    }
+    .layout{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:flex-start;
+      gap:16px;
+      max-width:100%;
+      box-sizing:border-box;
+    }
+    .main{ flex: 1 1 520px; min-width: 0; }
+    .side{ flex: 0 1 360px; min-width: 280px; max-width:100%; }
+    .card{ max-width:100%; box-sizing:border-box; }
+    /* 功能按鈕一行太長時自動換行 */
+    .feature-card{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:center;
+    }
+    .feature-card .feature-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      justify-content:center;
+    }
+    .feature-card .feature-actions .btn{ margin-left:0 !important; }
+
     /* 收費說明：縮小按鈕 */
     .pricing-mini-btn{
       padding: 6px 10px;
@@ -327,7 +362,6 @@
       <span class="pill bad">⛔ <b>試用期已結束</b>｜請聯絡 LINE：<b>@826ynmlh</b></span>
       {% endif %}
     </div>
-    </div>
 
     {% if access_ok %}
     <div class="layout">
@@ -340,9 +374,10 @@
         <div class="card feature-card" style="text-align:center;">
           <h2>功能</h2>
 
-          <a class="btn primary" href="/add-page">＋ 新增資料</a>
-          <a class="btn" href="/expense-page" style="margin-left:10px;">＋ 新增開銷</a>
-          <a class="btn" href="/history" style="margin-left:10px;">📄 歷史繳款</a>
+          <div class="feature-actions">
+            <a class="btn primary" href="/add-page">＋ 新增資料</a>
+            <a class="btn" href="/expense-page">＋ 新增開銷</a>
+            <a class="btn" href="/history">📄 歷史繳款</a>
 
 
 
@@ -362,6 +397,7 @@
           </a>
           {% endif %}
 
+          </div>
         </div>
 
 
