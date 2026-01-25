@@ -503,14 +503,14 @@ def get_group_access_status(user_id: int):
             until_date = None
 
         if until_date and until_date >= today:
-            return True, "activated", until_date.isoformat(), ""
+            return True, "activated", until_date, ""
 
         # 有值但已過期
         if until_date:
-            return False, "expired", until_date.isoformat(), "連結帳號功能已到期，請到後台重新開通。"
+            return False, "expired", until_date, "連結帳號功能已到期，請到後台重新開通。"
 
     # 尚未開通
-    return False, "expired", "", "連結帳號功能尚未開通，請到後台開通。"
+    return False, "expired", None, "連結帳號功能尚未開通，請到後台開通。"
 
 def get_access_status(user_id: int):
     """
